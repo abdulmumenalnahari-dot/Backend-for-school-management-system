@@ -2,61 +2,71 @@
 //------------------------
 // server.js
 const express = require("express");
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg"); // ✅ تم التغيير: استخدام pg بدل mysql2
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
+
 // تحميل المتغيرات البيئية
 dotenv.config();
+
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000; // ✅ تم التغيير: المنفذ الافتراضي على Render هو 10000
+
 // Middleware
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: [
+      "http://localhost:3000",
+      "https://boisterous-marshmallow-cbb349.netlify.app", // ✅ أضف رابط Netlify الخاص بك
+    ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
 );
+
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
+
 // إعداد اتصال قاعدة البيانات
 const dbConfig = {
-  host: process.env.DB_HOST || "localhost",
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "school_management", // تم الإصلاح: تعيين اسم قاعدة بيانات افتراضي صحيح
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 5432,
 };
+
 // دالة لإنشاء اتصال قاعدة البيانات مع معالجة الأخطاء
 const createConnection = async () => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = new Pool(dbConfig);
     console.log("اتصال ناجح بقاعدة البيانات");
-    return connection;
+    return pool;
   } catch (error) {
     console.error("فشل الاتصال بقاعدة البيانات:", error);
     throw error;
   }
 };
+
 // دالة لتنفيذ الاستعلامات مع معالجة الأخطاء
 const executeQuery = async (query, params = []) => {
-  let connection;
+  let client;
   try {
-    connection = await createConnection();
-    const [results] = await connection.execute(query, params);
-    return results;
+    const pool = await createConnection();
+    client = await pool.connect();
+    const result = await client.query(query, params);
+    return result.rows;
   } catch (error) {
     console.error("خطأ في تنفيذ الاستعلام:", error);
     throw error;
   } finally {
-    if (connection) {
-      await connection.end();
+    if (client) {
+      client.release();
     }
   }
 };
+
 // نقطة النهاية الأساسية
 app.get("/api", (req, res) => {
   res.json({
@@ -76,10 +86,11 @@ app.get("/api", (req, res) => {
       fees: "/api/fees",
       attendance: "/api/attendance",
       reports: "/api/reports/student/:id",
-      discounts: "/api/discounts", // تم الإضافة: نقطة نهاية الخصومات
+      discounts: "/api/discounts",
     },
   });
 });
+
 // 1. نقاط نهاية لوحة التحكم
 app.get("/api/dashboard/stats", async (req, res) => {
   try {
@@ -90,20 +101,23 @@ app.get("/api/dashboard/stats", async (req, res) => {
       WHERE status = 'نشط'
     `);
     const totalStudents = totalStudentsResult[0]?.count || 0;
+
     // جلب الحضور اليومي
     const attendanceTodayResult = await executeQuery(`
       SELECT COUNT(*) AS count 
       FROM attendance 
-      WHERE date = CURDATE() AND status = 'حاضر'
+      WHERE date = CURRENT_DATE AND status = 'حاضر'
     `);
     const attendanceToday = attendanceTodayResult[0]?.count || 0;
+
     // جلب الغياب اليومي
     const absentTodayResult = await executeQuery(`
       SELECT COUNT(*) AS count 
       FROM attendance 
-      WHERE date = CURDATE() AND status = 'غائب'
+      WHERE date = CURRENT_DATE AND status = 'غائب'
     `);
     const absentToday = absentTodayResult[0]?.count || 0;
+
     // جلب الرسوم المستحقة
     const feesDueResult = await executeQuery(`
       SELECT 
@@ -111,11 +125,12 @@ app.get("/api/dashboard/stats", async (req, res) => {
         COALESCE(SUM(p.amount), 0) AS paid_amount
       FROM fee_types ft
       LEFT JOIN payments p ON ft.id = p.fee_type_id
-      WHERE ft.is_mandatory = 1
+      WHERE ft.is_mandatory = true
     `);
     const totalFees = feesDueResult[0]?.total_fees || 0;
     const paidAmount = feesDueResult[0]?.paid_amount || 0;
     const pendingAmount = totalFees - paidAmount;
+
     res.json({
       totalStudents,
       attendanceToday,
@@ -130,12 +145,13 @@ app.get("/api/dashboard/stats", async (req, res) => {
     });
   }
 });
+
 app.get("/api/dashboard/latest-students", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name,
+        s.first_name || ' ' || s.last_name AS name,
         c.name AS grade,
         sec.name AS section,
         s.parent_phone AS phone
@@ -154,6 +170,7 @@ app.get("/api/dashboard/latest-students", async (req, res) => {
     });
   }
 });
+
 // 2. نقاط نهاية الأصناف الدراسية
 app.get("/api/classes", async (req, res) => {
   try {
@@ -172,10 +189,12 @@ app.get("/api/classes", async (req, res) => {
     });
   }
 });
+
 // 3. نقاط نهاية الشُعب
 app.get("/api/sections", async (req, res) => {
+  const { class_id } = req.query;
   try {
-    const sections = await executeQuery(`
+    let query = `
       SELECT 
         sec.id, 
         sec.name, 
@@ -183,24 +202,16 @@ app.get("/api/sections", async (req, res) => {
         c.name AS class_name
       FROM sections sec
       JOIN classes c ON sec.class_id = c.id
-      ORDER BY c.order_number, sec.name
-    `);
-    // تنظيم البيانات لسهولة الاستخدام في واجهة المستخدم
-    const sectionsByClass = {};
-    sections.forEach((section) => {
-      if (!sectionsByClass[section.class_id]) {
-        sectionsByClass[section.class_id] = {
-          class_id: section.class_id,
-          class_name: section.class_name,
-          sections: [],
-        };
-      }
-      sectionsByClass[section.class_id].sections.push({
-        id: section.id,
-        name: section.name,
-      });
-    });
-    res.json(Object.values(sectionsByClass));
+    `;
+    let params = [];
+    if (class_id) {
+      query += ` WHERE c.id = $1`;
+      params.push(class_id);
+    }
+    query += ` ORDER BY c.order_number, sec.name`;
+
+    const sections = await executeQuery(query, params);
+    res.json(sections);
   } catch (error) {
     console.error("خطأ في جلب الشُعب:", error);
     res.status(500).json({
@@ -209,6 +220,7 @@ app.get("/api/sections", async (req, res) => {
     });
   }
 });
+
 // 4. نقاط نهاية أنواع الرسوم
 app.get("/api/fee-types", async (req, res) => {
   try {
@@ -227,13 +239,14 @@ app.get("/api/fee-types", async (req, res) => {
     });
   }
 });
+
 // 5. نقاط نهاية الطلاب
 app.get("/api/students", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name,
+        s.first_name || ' ' || s.last_name AS name,
         s.id AS idNumber,
         c.name AS grade,
         sec.name AS section,
@@ -256,11 +269,9 @@ app.get("/api/students", async (req, res) => {
     });
   }
 });
+
 app.post("/api/students", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const {
       first_name,
       last_name,
@@ -282,6 +293,7 @@ app.post("/api/students", async (req, res) => {
       section_id,
       academic_year_id,
     } = req.body;
+
     // التحقق من الحقول المطلوبة
     if (!first_name || !last_name || !section_id) {
       return res.status(400).json({
@@ -293,11 +305,12 @@ app.post("/api/students", async (req, res) => {
         ].filter(Boolean),
       });
     }
-    // التحقق من وجود الطالب مسبقًا (باستخدام الاسم والشعبة)
-    const [existingStudent] = await connection.execute(
+
+    // التحقق من وجود الطالب مسبقًا
+    const existingStudent = await executeQuery(
       `
       SELECT id FROM students 
-      WHERE first_name = ? AND last_name = ? AND section_id = ?
+      WHERE first_name = $1 AND last_name = $2 AND section_id = $3
     `,
       [first_name, last_name, section_id]
     );
@@ -307,10 +320,11 @@ app.post("/api/students", async (req, res) => {
         details: "يوجد طالب بنفس الاسم والشعبة",
       });
     }
-    // التحقق من وجود الشعبة في قاعدة البيانات
-    const [sectionExists] = await connection.execute(
+
+    // التحقق من وجود الشعبة
+    const sectionExists = await executeQuery(
       `
-      SELECT id FROM sections WHERE id = ?
+      SELECT id FROM sections WHERE id = $1
     `,
       [section_id]
     );
@@ -321,11 +335,12 @@ app.post("/api/students", async (req, res) => {
         value: section_id,
       });
     }
-    // التحقق من وجود العام الدراسي في قاعدة البيانات
+
+    // التحقق من وجود العام الدراسي
     if (academic_year_id) {
-      const [yearExists] = await connection.execute(
+      const yearExists = await executeQuery(
         `
-        SELECT id FROM academic_years WHERE id = ?
+        SELECT id FROM academic_years WHERE id = $1
       `,
         [academic_year_id]
       );
@@ -337,33 +352,12 @@ app.post("/api/students", async (req, res) => {
         });
       }
     }
+
     // توليد معرف فريد للطالب
     const studentId = `STD${Date.now()}`;
-    // تأمين جميع الحقول
-    const safeParams = [
-      studentId,
-      first_name,
-      last_name,
-      gender || null,
-      birth_date || null,
-      nationality || "يمني",
-      religion || "إسلام",
-      address || null,
-      emergency_contact || null,
-      medical_conditions || null,
-      blood_type || null,
-      parent_guardian_name || null,
-      parent_guardian_relation || null,
-      parent_phone || null,
-      parent_email || null,
-      parent_occupation || null,
-      parent_work_address || null,
-      admission_date || new Date().toISOString().split("T")[0],
-      section_id,
-      academic_year_id || null,
-    ];
+
     // إدخال بيانات الطالب
-    await connection.execute(
+    await executeQuery(
       `
       INSERT INTO students (
         id, first_name, last_name, gender, birth_date, nationality, religion, 
@@ -371,90 +365,88 @@ app.post("/api/students", async (req, res) => {
         parent_guardian_name, parent_guardian_relation, parent_phone, 
         parent_email, parent_occupation, parent_work_address, 
         admission_date, section_id, academic_year_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     `,
-      safeParams
+      [
+        studentId,
+        first_name,
+        last_name,
+        gender || null,
+        birth_date || null,
+        nationality || "يمني",
+        religion || "إسلام",
+        address || null,
+        emergency_contact || null,
+        medical_conditions || null,
+        blood_type || null,
+        parent_guardian_name || null,
+        parent_guardian_relation || null,
+        parent_phone || null,
+        parent_email || null,
+        parent_occupation || null,
+        parent_work_address || null,
+        admission_date || new Date().toISOString().split("T")[0],
+        section_id,
+        academic_year_id || null,
+      ]
     );
-    await connection.commit();
+
     res.status(201).json({
       id: studentId,
       message: "تم إضافة الطالب بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في إضافة الطالب:", error);
-    // معالجة خطأ المفتاح الخارجي بشكل خاص
-    if (error.code === "ER_NO_REFERENCED_ROW_2") {
-      return res.status(400).json({
-        error: "الشعبة المحددة غير موجودة في قاعدة البيانات",
-        details: "تأكد من اختيار شعبة موجودة من القائمة",
-      });
-    }
     res.status(500).json({
       error: "فشل إضافة الطالب",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 app.delete("/api/students/:id", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const studentId = req.params.id;
+
     // حذف السجلات المرتبطة
-    await connection.execute("DELETE FROM attendance WHERE student_id = ?", [
+    await executeQuery("DELETE FROM attendance WHERE student_id = $1", [
       studentId,
     ]);
-    await connection.execute("DELETE FROM payments WHERE student_id = ?", [
+    await executeQuery("DELETE FROM payments WHERE student_id = $1", [
       studentId,
     ]);
-    await connection.execute(
-      "DELETE FROM academic_results WHERE student_id = ?",
+    await executeQuery("DELETE FROM academic_results WHERE student_id = $1", [
+      studentId,
+    ]);
+    await executeQuery("DELETE FROM notes WHERE student_id = $1", [studentId]);
+    await executeQuery(
+      "DELETE FROM user_student_relations WHERE student_id = $1",
       [studentId]
     );
-    await connection.execute("DELETE FROM notes WHERE student_id = ?", [
-      studentId,
-    ]);
-    await connection.execute(
-      "DELETE FROM user_student_relations WHERE student_id = ?",
-      [studentId]
-    );
+
     // حذف الطالب
-    await connection.execute("DELETE FROM students WHERE id = ?", [studentId]);
-    await connection.commit();
+    await executeQuery("DELETE FROM students WHERE id = $1", [studentId]);
+
     res.json({
       message: "تم حذف الطالب بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في حذف الطالب:", error);
     res.status(500).json({
       error: "فشل حذف الطالب",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 app.get("/api/students/for-fees", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name
+        s.first_name || ' ' || s.last_name AS name
       FROM students s
       WHERE s.status = 'نشط'
       ORDER BY s.created_at DESC
@@ -468,44 +460,13 @@ app.get("/api/students/for-fees", async (req, res) => {
     });
   }
 });
-// في server.js، أضف هذا الكود قبل التعامل مع المسارات غير المعرفة
 
-// نقطة نهاية لتحميل الشعب حسب الصف
-app.get("/api/sections", async (req, res) => {
-  const { class_id } = req.query;
-  try {
-    let query = `
-      SELECT 
-        sec.id, 
-        sec.name, 
-        c.id AS class_id,
-        c.name AS class_name
-      FROM sections sec
-      JOIN classes c ON sec.class_id = c.id
-    `;
-    let params = [];
-    if (class_id) {
-      query += ` WHERE c.id = ?`;
-      params.push(class_id);
-    }
-    query += ` ORDER BY c.order_number, sec.name`;
-
-    const sections = await executeQuery(query, params);
-    res.json(sections);
-  } catch (error) {
-    console.error("خطأ في جلب الشُعب:", error);
-    res.status(500).json({
-      error: "فشل جلب الشُعب",
-      details: error.message,
-    });
-  }
-});
 app.get("/api/students/for-attendance", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name,
+        s.first_name || ' ' || s.last_name AS name,
         c.name AS grade,
         sec.name AS section
       FROM students s
@@ -523,12 +484,13 @@ app.get("/api/students/for-attendance", async (req, res) => {
     });
   }
 });
+
 app.get("/api/students/for-report", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name
+        s.first_name || ' ' || s.last_name AS name
       FROM students s
       WHERE s.status = 'نشط'
       ORDER BY s.created_at DESC
@@ -542,13 +504,14 @@ app.get("/api/students/for-report", async (req, res) => {
     });
   }
 });
+
 // 6. نقاط نهاية الرسوم
 app.get("/api/fees", async (req, res) => {
   try {
     const fees = await executeQuery(`
       SELECT 
         p.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS studentName,
+        s.first_name || ' ' || s.last_name AS studentName,
         ft.name AS type,
         p.amount,
         p.payment_date AS date,
@@ -567,11 +530,9 @@ app.get("/api/fees", async (req, res) => {
     });
   }
 });
+
 app.post("/api/fees", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const {
       student_id,
       fee_type_id,
@@ -581,6 +542,7 @@ app.post("/api/fees", async (req, res) => {
       receipt_number,
       notes,
     } = req.body;
+
     // التحقق من الحقول المطلوبة
     if (!student_id || !fee_type_id || !amount) {
       return res.status(400).json({
@@ -592,10 +554,11 @@ app.post("/api/fees", async (req, res) => {
         ].filter(Boolean),
       });
     }
-    // التحقق من وجود الطالب في قاعدة البيانات
-    const [studentExists] = await connection.execute(
+
+    // التحقق من وجود الطالب
+    const studentExists = await executeQuery(
       `
-      SELECT id FROM students WHERE id = ?
+      SELECT id FROM students WHERE id = $1
     `,
       [student_id]
     );
@@ -606,10 +569,11 @@ app.post("/api/fees", async (req, res) => {
         value: student_id,
       });
     }
-    // التحقق من وجود نوع الرسم في قاعدة البيانات
-    const [feeTypeExists] = await connection.execute(
+
+    // التحقق من وجود نوع الرسم
+    const feeTypeExists = await executeQuery(
       `
-      SELECT id FROM fee_types WHERE id = ?
+      SELECT id FROM fee_types WHERE id = $1
     `,
       [fee_type_id]
     );
@@ -620,12 +584,13 @@ app.post("/api/fees", async (req, res) => {
         value: fee_type_id,
       });
     }
+
     // إدخال الدفعة
-    await connection.execute(
+    await executeQuery(
       `
       INSERT INTO payments (
         student_id, fee_type_id, amount, payment_date, payment_method, receipt_number, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
     `,
       [
         student_id,
@@ -637,54 +602,40 @@ app.post("/api/fees", async (req, res) => {
         notes || null,
       ]
     );
-    await connection.commit();
+
     res.status(201).json({
       message: "تم تسجيل الدفعة بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في تسجيل الدفعة:", error);
     res.status(500).json({
       error: "فشل تسجيل الدفعة",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 app.delete("/api/fees/:id", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const paymentId = req.params.id;
+
     // حذف الدفعة
-    await connection.execute("DELETE FROM payments WHERE id = ?", [paymentId]);
-    await connection.commit();
+    await executeQuery("DELETE FROM payments WHERE id = $1", [paymentId]);
+
     res.json({
       message: "تم حذف الدفعة بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في حذف الدفعة:", error);
     res.status(500).json({
       error: "فشل حذف الدفعة",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 // 7. نقاط نهاية الحضور
 app.get("/api/attendance", async (req, res) => {
   const { date } = req.query;
@@ -694,7 +645,7 @@ app.get("/api/attendance", async (req, res) => {
       SELECT 
         a.id,
         a.student_id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name,
+        s.first_name || ' ' || s.last_name AS name,
         c.name AS grade,
         sec.name AS section,
         a.status,
@@ -705,7 +656,7 @@ app.get("/api/attendance", async (req, res) => {
       JOIN students s ON a.student_id = s.id
       JOIN sections sec ON s.section_id = sec.id
       JOIN classes c ON sec.class_id = c.id
-      WHERE a.date = ?
+      WHERE a.date = $1
       ORDER BY c.order_number, sec.name, s.first_name
     `,
       [date || new Date().toISOString().split("T")[0]]
@@ -719,12 +670,11 @@ app.get("/api/attendance", async (req, res) => {
     });
   }
 });
+
 app.post("/api/attendance", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const { student_id, date, status, time_in, time_out, notes } = req.body;
+
     // التحقق من الحقول المطلوبة
     if (!student_id || !date || !status) {
       return res.status(400).json({
@@ -736,10 +686,11 @@ app.post("/api/attendance", async (req, res) => {
         ].filter(Boolean),
       });
     }
-    // التحقق من وجود الطالب في قاعدة البيانات
-    const [studentExists] = await connection.execute(
+
+    // التحقق من وجود الطالب
+    const studentExists = await executeQuery(
       `
-      SELECT id FROM students WHERE id = ?
+      SELECT id FROM students WHERE id = $1
     `,
       [student_id]
     );
@@ -750,96 +701,81 @@ app.post("/api/attendance", async (req, res) => {
         value: student_id,
       });
     }
-    // التحقق مما إذا كان هناك سجل موجود لهذا الطالب في هذا اليوم
-    const [existing] = await connection.execute(
+
+    // التحقق من وجود سجل
+    const existing = await executeQuery(
       `
-      SELECT id FROM attendance WHERE student_id = ? AND date = ?
+      SELECT id FROM attendance WHERE student_id = $1 AND date = $2
     `,
       [student_id, date]
     );
+
     if (existing.length > 0) {
-      // تحديث السجل الموجود
-      await connection.execute(
+      // تحديث السجل
+      await executeQuery(
         `
         UPDATE attendance 
-        SET status = ?, time_in = ?, time_out = ?, notes = ?
-        WHERE student_id = ? AND date = ?
+        SET status = $1, time_in = $2, time_out = $3, notes = $4
+        WHERE student_id = $5 AND date = $6
       `,
         [status, time_in, time_out, notes, student_id, date]
       );
     } else {
       // إنشاء سجل جديد
-      await connection.execute(
+      await executeQuery(
         `
         INSERT INTO attendance (
           student_id, date, status, time_in, time_out, notes
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES ($1, $2, $3, $4, $5, $6)
       `,
         [student_id, date, status, time_in, time_out, notes]
       );
     }
-    await connection.commit();
+
     res.status(201).json({
       message: "تم تحديث بيانات الحضور بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في تسجيل الحضور:", error);
     res.status(500).json({
       error: "فشل تسجيل الحضور",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 app.delete("/api/attendance/:id", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const attendanceId = req.params.id;
+
     // حذف سجل الحضور
-    await connection.execute("DELETE FROM attendance WHERE id = ?", [
-      attendanceId,
-    ]);
-    await connection.commit();
+    await executeQuery("DELETE FROM attendance WHERE id = $1", [attendanceId]);
+
     res.json({
       message: "تم حذف سجل الحضور بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في حذف سجل الحضور:", error);
     res.status(500).json({
       error: "فشل حذف سجل الحضور",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 // 8. نقاط نهاية التقارير
-// 8. نقاط نهاية التقارير - محدثة
 app.get("/api/reports/student/:id", async (req, res) => {
   try {
     const studentId = req.params.id;
 
     // جلب معلومات الطالب
-    const [student] = await executeQuery(
+    const studentResult = await executeQuery(
       `
       SELECT 
         s.id,
-        CONCAT(s.first_name, ' ', s.last_name) AS name,
+        s.first_name || ' ' || s.last_name AS name,
         s.id AS idNumber,
         c.name AS grade,
         sec.name AS section,
@@ -849,17 +785,19 @@ app.get("/api/reports/student/:id", async (req, res) => {
       FROM students s
       JOIN sections sec ON s.section_id = sec.id
       JOIN classes c ON sec.class_id = c.id
-      WHERE s.id = ?
+      WHERE s.id = $1
     `,
       [studentId]
     );
 
-    if (!student) {
+    if (studentResult.length === 0) {
       return res.status(404).json({
         error: "الطالب غير موجود",
         studentId,
       });
     }
+
+    const student = studentResult[0];
 
     // جلب بيانات الحضور لهذا الشهر
     const attendance = await executeQuery(
@@ -868,7 +806,7 @@ app.get("/api/reports/student/:id", async (req, res) => {
         date,
         status
       FROM attendance
-      WHERE student_id = ? AND MONTH(date) = MONTH(CURDATE()) AND YEAR(date) = YEAR(CURDATE())
+      WHERE student_id = $1 AND EXTRACT(MONTH FROM date) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM date) = EXTRACT(YEAR FROM CURRENT_DATE)
       ORDER BY date ASC
     `,
       [studentId]
@@ -878,8 +816,10 @@ app.get("/api/reports/student/:id", async (req, res) => {
     const totalDays = attendance.length;
     const presentDays = attendance.filter((a) => a.status === "حاضر").length;
     const absentDays = attendance.filter((a) => a.status === "غائب").length;
-    const attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 100;
-    const absenceRate = totalDays > 0 ? Math.round((absentDays / totalDays) * 100) : 0;
+    const attendanceRate =
+      totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 100;
+    const absenceRate =
+      totalDays > 0 ? Math.round((absentDays / totalDays) * 100) : 0;
 
     // جلب تفاصيل الرسوم حسب النوع
     const feeTypes = await executeQuery(
@@ -893,7 +833,7 @@ app.get("/api/reports/student/:id", async (req, res) => {
         SELECT c.id FROM students s
         JOIN sections sec ON s.section_id = sec.id
         JOIN classes c ON sec.class_id = c.id
-        WHERE s.id = ?
+        WHERE s.id = $1
       )
     `,
       [studentId]
@@ -908,20 +848,20 @@ app.get("/api/reports/student/:id", async (req, res) => {
         SUM(p.amount) AS paid
       FROM payments p
       JOIN fee_types ft ON p.fee_type_id = ft.id
-      WHERE p.student_id = ?
+      WHERE p.student_id = $1
       GROUP BY ft.id, ft.name
     `,
       [studentId]
     );
 
     // دمج الرسوم المطلوبة مع المدفوعة
-    const feesBreakdown = feeTypes.map(ft => {
-      const payment = paymentsByType.find(p => p.fee_type_id === ft.id);
+    const feesBreakdown = feeTypes.map((ft) => {
+      const payment = paymentsByType.find((p) => p.fee_type_id === ft.id);
       return {
         type: ft.name,
         required: ft.required,
         paid: payment ? payment.paid : 0,
-        pending: ft.required - (payment ? payment.paid : 0)
+        pending: ft.required - (payment ? payment.paid : 0),
       };
     });
 
@@ -940,7 +880,7 @@ app.get("/api/reports/student/:id", async (req, res) => {
         approved_by,
         approval_date
       FROM discounts
-      WHERE student_id = ?
+      WHERE student_id = $1
       ORDER BY approval_date DESC
     `,
       [studentId]
@@ -951,8 +891,8 @@ app.get("/api/reports/student/:id", async (req, res) => {
 
     if (discounts.length > 0) {
       totalDiscount = discounts.reduce((sum, d) => sum + d.amount, 0);
-      // تقدير النسبة الإجمالية من إجمالي الرسوم
-      discountPercentage = totalFees > 0 ? Math.round((totalDiscount / totalFees) * 100) : 0;
+      discountPercentage =
+        totalFees > 0 ? Math.round((totalDiscount / totalFees) * 100) : 0;
     }
 
     // الحالة المالية النهائية بعد الخصم
@@ -966,7 +906,7 @@ app.get("/api/reports/student/:id", async (req, res) => {
       attendance,
       attendanceRate,
       absenceRate,
-      feesBreakdown, // ← مهم: تفاصيل الرسوم حسب النوع
+      feesBreakdown,
       totalFees,
       totalPaid,
       totalPending,
@@ -984,12 +924,10 @@ app.get("/api/reports/student/:id", async (req, res) => {
     });
   }
 });
+
 // 9. نقاط نهاية الخصومات
 app.post("/api/discounts", async (req, res) => {
-  let connection;
   try {
-    connection = await createConnection();
-    await connection.beginTransaction();
     const {
       student_id,
       amount,
@@ -998,6 +936,7 @@ app.post("/api/discounts", async (req, res) => {
       academic_year_id,
       approved_by,
     } = req.body;
+
     // التحقق من الحقول المطلوبة
     if (!student_id || (!amount && !percentage) || !reason || !approved_by) {
       return res.status(400).json({
@@ -1010,9 +949,10 @@ app.post("/api/discounts", async (req, res) => {
         ].filter(Boolean),
       });
     }
+
     // التحقق من وجود الطالب
-    const [studentExists] = await connection.execute(
-      `SELECT id FROM students WHERE id = ?`,
+    const studentExists = await executeQuery(
+      `SELECT id FROM students WHERE id = $1`,
       [student_id]
     );
     if (studentExists.length === 0) {
@@ -1022,10 +962,11 @@ app.post("/api/discounts", async (req, res) => {
         value: student_id,
       });
     }
-    // إذا تم إدخال نسبة، احسب المبلغ بناءً على إجمالي رسوم الطالب
+
+    // إذا تم إدخال نسبة، احسب المبلغ
     let finalAmount = amount;
     if (percentage && !amount) {
-      const [totalFeesResult] = await connection.execute(
+      const totalFeesResult = await executeQuery(
         `
         SELECT SUM(ft.amount) AS total
         FROM fee_types ft
@@ -1033,7 +974,7 @@ app.post("/api/discounts", async (req, res) => {
           SELECT c.id FROM students s
           JOIN sections sec ON s.section_id = sec.id
           JOIN classes c ON sec.class_id = c.id
-          WHERE s.id = ?
+          WHERE s.id = $1
         )
       `,
         [student_id]
@@ -1041,12 +982,13 @@ app.post("/api/discounts", async (req, res) => {
       const totalFees = totalFeesResult[0]?.total || 0;
       finalAmount = (totalFees * percentage) / 100;
     }
+
     // إدخال الخصم
-    await connection.execute(
+    await executeQuery(
       `
       INSERT INTO discounts (
         student_id, amount, percentage, reason, academic_year_id, approved_by, approval_date
-      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE())
+      ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)
     `,
       [
         student_id,
@@ -1057,26 +999,20 @@ app.post("/api/discounts", async (req, res) => {
         approved_by,
       ]
     );
-    await connection.commit();
+
     res.status(201).json({
       message: "تم تسجيل الخصم بنجاح",
       success: true,
     });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
     console.error("خطأ في تسجيل الخصم:", error);
     res.status(500).json({
       error: "فشل تسجيل الخصم",
       details: error.message,
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 });
+
 // 10. نقطة نهاية الأعوام الدراسية
 app.get("/api/academic-years", async (req, res) => {
   try {
@@ -1095,6 +1031,7 @@ app.get("/api/academic-years", async (req, res) => {
     });
   }
 });
+
 // التعامل مع المسارات غير المعرفة
 app.use((req, res) => {
   res.status(404).json({
@@ -1102,6 +1039,7 @@ app.use((req, res) => {
     path: req.path,
   });
 });
+
 // معالجة الأخطاء العامة
 app.use((err, req, res, next) => {
   console.error("خطأ غير متوقع:", err);
@@ -1110,8 +1048,9 @@ app.use((err, req, res, next) => {
     details: err.message,
   });
 });
+
 // بدء الخادم
 app.listen(PORT, () => {
   console.log(`الخادم يعمل على http://localhost:${PORT}`);
-  console.log("الاتصال بقاعدة البيانات: school_management");
+  console.log(`الخادم يعمل على المنفذ: ${PORT}`);
 });
