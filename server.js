@@ -18,7 +18,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://boisterous-marshmallow-cbb349.netlify.app", // ✅ أضف رابط Netlify الخاص بك
+      "https://boisterous-marshmallow-cbb349.netlify.app",
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
@@ -40,7 +40,16 @@ const dbConfig = {
 // دالة لإنشاء اتصال قاعدة البيانات مع معالجة الأخطاء
 const createConnection = async () => {
   try {
-    const pool = new Pool(dbConfig);
+    const pool = new Pool({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 5432,
+      ssl: {
+        rejectUnauthorized: false, // ← مهم جدًا لـ Neon.tech
+      },
+    });
     console.log("اتصال ناجح بقاعدة البيانات");
     return pool;
   } catch (error) {
