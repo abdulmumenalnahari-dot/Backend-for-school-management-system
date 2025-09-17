@@ -1,6 +1,6 @@
 // server.js
 const express = require("express");
-const { Pool } = require("pg"); // استخدام PostgreSQL بدل MySQL
+const { Pool } = require("pg"); // استخدام PostgreSQL
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
@@ -11,7 +11,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware: CORS
+// Middleware: CORS - دعم الواجهة الأمامية
 app.use(
   cors({
     origin: [
@@ -26,32 +26,43 @@ app.use(
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 
-// دالة لإنشاء اتصال قاعدة البيانات (مع SSL لـ Neon)
-const createConnection = async () => {
+// --- إدارة اتصال قاعدة البيانات باستخدام Pool واحد ---
+let pool;
+
+const initializeDatabase = async () => {
   try {
-    const pool = new Pool({
+    pool = new Pool({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       port: process.env.DB_PORT || 5432,
       ssl: {
-        rejectUnauthorized: false, // ضروري للعمل مع Neon.tech
+        rejectUnauthorized: false, // ضروري لـ Neon.tech
       },
+      max: 20, // عدد أقصى من الاتصالات
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
     });
+
+    // اختبار الاتصال
+    await pool.query("SELECT NOW()");
     console.log("✅ اتصال ناجح بقاعدة البيانات");
-    return pool;
   } catch (error) {
     console.error("❌ فشل الاتصال بقاعدة البيانات:", error.message);
-    throw error;
+    // حاول إعادة الاتصال بعد 5 ثوانٍ
+    setTimeout(initializeDatabase, 5000);
   }
 };
 
-// دالة تنفيذ الاستعلامات مع إدارة الاتصال
+// دالة تنفيذ الاستعلامات (تستخدم التجمع الموحد)
 const executeQuery = async (query, params = []) => {
+  if (!pool) {
+    throw new Error("قاعدة البيانات غير متاحة. جاري المحاولة لإعادة الاتصال...");
+  }
+
   let client;
   try {
-    const pool = await createConnection();
     client = await pool.connect();
     const result = await client.query(query, params);
     return result.rows;
@@ -112,10 +123,10 @@ app.get("/api/dashboard/stats", async (req, res) => {
       feesDue: parseFloat(feesDue[0]?.pending || 0)
     });
   } catch (error) {
-    console.error("خطأ في جلب إحصائيات لوحة التحكم:", error);
+    console.error("خطأ في جلب إحصائيات لوحة التحكم:", error.message);
     res.status(500).json({
       error: "فشل جلب الإحصائيات",
-      details: error.message,
+      details: "حدث خطأ أثناء استرجاع البيانات"
     });
   }
 });
@@ -138,10 +149,10 @@ app.get("/api/dashboard/latest-students", async (req, res) => {
     `);
     res.json(students);
   } catch (error) {
-    console.error("خطأ في جلب أحدث الطلاب:", error);
+    console.error("خطأ في جلب أحدث الطلاب:", error.message);
     res.status(500).json({
       error: "فشل جلب أحدث الطلاب",
-      details: error.message,
+      details: "تأكد من وجود بيانات في الجدول"
     });
   }
 });
@@ -156,10 +167,10 @@ app.get("/api/classes", async (req, res) => {
     `);
     res.json(classes);
   } catch (error) {
-    console.error("خطأ في جلب الصفوف:", error);
+    console.error("خطأ في جلب الصفوف:", error.message);
     res.status(500).json({
       error: "فشل جلب الصفوف",
-      details: error.message,
+      details: "تحقق من اتصال قاعدة البيانات"
     });
   }
 });
@@ -187,10 +198,10 @@ app.get("/api/sections", async (req, res) => {
     const sections = await executeQuery(query, params);
     res.json(sections);
   } catch (error) {
-    console.error("خطأ في جلب الشُعب:", error);
+    console.error("خطأ في جلب الشُعب:", error.message);
     res.status(500).json({
       error: "فشل جلب الشُعب",
-      details: error.message,
+      details: "تحقق من صحة المعلمات"
     });
   }
 });
@@ -205,10 +216,10 @@ app.get("/api/fee-types", async (req, res) => {
     `);
     res.json(feeTypes);
   } catch (error) {
-    console.error("خطأ في جلب أنواع الرسوم:", error);
+    console.error("خطأ في جلب أنواع الرسوم:", error.message);
     res.status(500).json({
       error: "فشل جلب أنواع الرسوم",
-      details: error.message,
+      details: "تحقق من جدول fee_types"
     });
   }
 });
@@ -235,10 +246,10 @@ app.get("/api/students", async (req, res) => {
     `);
     res.json(students);
   } catch (error) {
-    console.error("خطأ في جلب قائمة الطلاب:", error);
+    console.error("خطأ في جلب قائمة الطلاب:", error.message);
     res.status(500).json({
       error: "فشل جلب قائمة الطلاب",
-      details: error.message,
+      details: "تحقق من جداول students وsections وclasses"
     });
   }
 });
@@ -316,10 +327,10 @@ app.post("/api/students", async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("خطأ في إضافة الطالب:", error);
+    console.error("خطأ في إضافة الطالب:", error.message);
     res.status(500).json({
       error: "فشل إضافة الطالب",
-      details: error.message,
+      details: "تحقق من صحة البيانات"
     });
   }
 });
@@ -337,15 +348,15 @@ app.delete("/api/students/:id", async (req, res) => {
 
     res.json({ message: "تم حذف الطالب بنجاح", success: true });
   } catch (error) {
-    console.error("خطأ في حذف الطالب:", error);
+    console.error("خطأ في حذف الطالب:", error.message);
     res.status(500).json({
       error: "فشل حذف الطالب",
-      details: error.message,
+      details: "قد تكون هناك سجلات مرتبطة"
     });
   }
 });
 
-// 9. الطلاب للنماذج (الرسوم، الحضور، التقارير)
+// 9. الطلاب للنماذج
 app.get("/api/students/for-fees", async (req, res) => {
   try {
     const students = await executeQuery(`
@@ -562,16 +573,27 @@ app.use((req, res) => {
   });
 });
 
-// 16. معالجة الأخطاء العامة
+// 16. معالجة الأخطاء العامة (لا توقف السيرفر)
 app.use((err, req, res, next) => {
-  console.error("❌ خطأ غير متوقع:", err);
+  console.error("❌ خطأ غير متوقع:", err.stack);
   res.status(500).json({
     error: "حدث خطأ داخلي في الخادم",
-    details: err.message,
+    details: "يرجى المحاولة لاحقًا"
   });
 });
 
 // 17. بدء السيرفر
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
+  await initializeDatabase(); // بدء اتصال قاعدة البيانات
+});
+
+// --- إدارة إعادة الاتصال التلقائي ---
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  // لا تتوقف — استمر في العمل
+  process.exitCode = 1;
 });
