@@ -11,7 +11,10 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 10000; // ✅ تم التغيير: المنفذ الافتراضي على Render هو 10000
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log(`السيرفر يعمل على المنفذ ${PORT}`);
+}); // ✅ تم التغيير: المنفذ الافتراضي على Render هو 10000
 
 // Middleware
 app.use(
