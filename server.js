@@ -1041,6 +1041,61 @@ app.get("/api/academic-years", async (req, res) => {
   }
 });
 
+// 11. نقطة نهاية إنشاء مستخدم جديد
+app.post("/api/users", async (req, res) => {
+  try {
+    const { username, email, password, role } = req.body;
+
+    // التحقق من الحقول المطلوبة
+    if (!username || !email || !password || !role) {
+      return res.status(400).json({
+        error: "الحقول المطلوبة غير مكتملة",
+        fields: [
+          !username && "username",
+          !email && "email",
+          !password && "password",
+          !role && "role",
+        ].filter(Boolean),
+      });
+    }
+
+    // التحقق من وجود المستخدم مسبقًا
+    const existingUser = await executeQuery(
+      `
+      SELECT id FROM users WHERE username = $1 OR email = $2
+    `,
+      [username, email]
+    );
+
+    if (existingUser.length > 0) {
+      return res.status(400).json({
+        error: "المستخدم موجود مسبقًا",
+        details: "اسم المستخدم أو البريد الإلكتروني مستخدم من قبل",
+      });
+    }
+
+    // إدخال المستخدم الجديد
+    await executeQuery(
+      `
+      INSERT INTO users (username, email, password, role, is_active)
+      VALUES ($1, $2, $3, $4, true)
+    `,
+      [username, email, password, role]
+    );
+
+    res.status(201).json({
+      message: "تم إنشاء المستخدم بنجاح",
+      success: true,
+    });
+  } catch (error) {
+    console.error("خطأ في إنشاء المستخدم:", error);
+    res.status(500).json({
+      error: "فشل إنشاء المستخدم",
+      details: error.message,
+    });
+  }
+});
+
 // التعامل مع المسارات غير المعرفة
 app.use((req, res) => {
   res.status(404).json({
