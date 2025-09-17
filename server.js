@@ -47,7 +47,7 @@ const createConnection = async () => {
       database: process.env.DB_NAME,
       port: process.env.DB_PORT || 5432,
       ssl: {
-        rejectUnauthorized: false, // ← مهم جدًا لـ Neon.tech
+        rejectUnauthorized: false, // ← هذا السطر ضروري لـ Neon.tech
       },
     });
     console.log("اتصال ناجح بقاعدة البيانات");
