@@ -21,9 +21,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://boisterous-marshmallow-cbb349.netlify.app",
+      "https://abdulmumenal-nahari.netlify.app", // ← أو اسم نطاقك على Netlify
     ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
 );
