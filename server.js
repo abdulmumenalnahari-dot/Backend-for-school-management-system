@@ -1,6 +1,6 @@
 // server.js
 const express = require("express");
-const { Pool } = require("pg"); // استخدام pg بدلاً من mysql2
+const { Pool } = require("pg"); // استخدام PostgreSQL بدل MySQL
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
@@ -11,21 +11,22 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware
+// Middleware: CORS
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://abdulmumenal-nahari.netlify.app", // ← بدون مسافات زائدة!
+      "https://abdulmumenal-nahari.netlify.app"
     ],
     credentials: true,
   })
 );
 
+// Middleware: تحويل البيانات الواردة
 app.use(bodyParser.json({ limit: "10mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 
-// دالة لإنشاء اتصال قاعدة البيانات
+// دالة لإنشاء اتصال قاعدة البيانات (مع SSL لـ Neon)
 const createConnection = async () => {
   try {
     const pool = new Pool({
@@ -46,7 +47,7 @@ const createConnection = async () => {
   }
 };
 
-// دالة لتنفيذ الاستعلامات مع إدارة الاتصال
+// دالة تنفيذ الاستعلامات مع إدارة الاتصال
 const executeQuery = async (query, params = []) => {
   let client;
   try {
@@ -83,39 +84,32 @@ app.get("/api", (req, res) => {
       reports: "/api/reports/student/:id",
       discounts: "/api/discounts",
       academicYears: "/api/academic-years",
-      users: "/api/users",
-    },
+      users: "/api/users"
+    }
   });
 });
 
-// 1. نقاط نهاية لوحة التحكم
+// 1. لوحة التحكم - الإحصائيات
 app.get("/api/dashboard/stats", async (req, res) => {
   try {
-    const [totalStudents, attendanceToday, absentToday, feesDue] =
-      await Promise.all([
-        executeQuery(
-          `SELECT COUNT(*) AS count FROM students WHERE status = 'نشط'`
-        ),
-        executeQuery(
-          `SELECT COUNT(*) AS count FROM attendance WHERE date = CURRENT_DATE AND status = 'حاضر'`
-        ),
-        executeQuery(
-          `SELECT COUNT(*) AS count FROM attendance WHERE date = CURRENT_DATE AND status = 'غائب'`
-        ),
-        executeQuery(`
+    const [totalStudents, attendanceToday, absentToday, feesDue] = await Promise.all([
+      executeQuery(`SELECT COUNT(*) AS count FROM students WHERE status = 'نشط'`),
+      executeQuery(`SELECT COUNT(*) AS count FROM attendance WHERE date = CURRENT_DATE AND status = 'حاضر'`),
+      executeQuery(`SELECT COUNT(*) AS count FROM attendance WHERE date = CURRENT_DATE AND status = 'غائب'`),
+      executeQuery(`
         SELECT 
           COALESCE(SUM(ft.amount), 0) - COALESCE(SUM(p.amount), 0) AS pending
         FROM fee_types ft
         LEFT JOIN payments p ON ft.id = p.fee_type_id
         WHERE ft.is_mandatory = true
-      `),
-      ]);
+      `)
+    ]);
 
     res.json({
       totalStudents: parseInt(totalStudents[0]?.count || 0),
       attendanceToday: parseInt(attendanceToday[0]?.count || 0),
       absentToday: parseInt(absentToday[0]?.count || 0),
-      feesDue: parseFloat(feesDue[0]?.pending || 0),
+      feesDue: parseFloat(feesDue[0]?.pending || 0)
     });
   } catch (error) {
     console.error("خطأ في جلب إحصائيات لوحة التحكم:", error);
@@ -126,6 +120,7 @@ app.get("/api/dashboard/stats", async (req, res) => {
   }
 });
 
+// 2. أحدث الطلاب
 app.get("/api/dashboard/latest-students", async (req, res) => {
   try {
     const students = await executeQuery(`
@@ -151,7 +146,7 @@ app.get("/api/dashboard/latest-students", async (req, res) => {
   }
 });
 
-// 2. نقاط نهاية الصفوف
+// 3. الصفوف
 app.get("/api/classes", async (req, res) => {
   try {
     const classes = await executeQuery(`
@@ -169,7 +164,7 @@ app.get("/api/classes", async (req, res) => {
   }
 });
 
-// 3. نقاط نهاية الشُعب
+// 4. الشُعب
 app.get("/api/sections", async (req, res) => {
   const { class_id } = req.query;
   try {
@@ -200,7 +195,7 @@ app.get("/api/sections", async (req, res) => {
   }
 });
 
-// 4. نقاط نهاية أنواع الرسوم
+// 5. أنواع الرسوم
 app.get("/api/fee-types", async (req, res) => {
   try {
     const feeTypes = await executeQuery(`
@@ -218,7 +213,7 @@ app.get("/api/fee-types", async (req, res) => {
   }
 });
 
-// 5. نقاط نهاية الطلاب
+// 6. الطلاب
 app.get("/api/students", async (req, res) => {
   try {
     const students = await executeQuery(`
@@ -248,6 +243,7 @@ app.get("/api/students", async (req, res) => {
   }
 });
 
+// 7. إضافة طالب جديد
 app.post("/api/students", async (req, res) => {
   try {
     const {
@@ -294,32 +290,6 @@ app.post("/api/students", async (req, res) => {
       });
     }
 
-    const sectionExists = await executeQuery(
-      `SELECT id FROM sections WHERE id = $1`,
-      [section_id]
-    );
-    if (sectionExists.length === 0) {
-      return res.status(400).json({
-        error: "الشعبة المحددة غير موجودة",
-        field: "section_id",
-        value: section_id,
-      });
-    }
-
-    if (academic_year_id) {
-      const yearExists = await executeQuery(
-        `SELECT id FROM academic_years WHERE id = $1`,
-        [academic_year_id]
-      );
-      if (yearExists.length === 0) {
-        return res.status(400).json({
-          error: "العام الدراسي المحدد غير موجود",
-          field: "academic_year_id",
-          value: academic_year_id,
-        });
-      }
-    }
-
     const studentId = `STD${Date.now()}`;
     await executeQuery(
       `INSERT INTO students (
@@ -330,26 +300,13 @@ app.post("/api/students", async (req, res) => {
         admission_date, section_id, academic_year_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
       [
-        studentId,
-        first_name,
-        last_name,
-        gender || null,
-        birth_date || null,
-        nationality || "يمني",
-        religion || "إسلام",
-        address || null,
-        emergency_contact || null,
-        medical_conditions || null,
-        blood_type || null,
-        parent_guardian_name || null,
-        parent_guardian_relation || null,
-        parent_phone || null,
-        parent_email || null,
-        parent_occupation || null,
-        parent_work_address || null,
-        admission_date || new Date().toISOString().split("T")[0],
-        section_id,
-        academic_year_id || null,
+        studentId, first_name, last_name, gender || null, birth_date || null,
+        nationality || "يمني", religion || "إسلام", address || null,
+        emergency_contact || null, medical_conditions || null, blood_type || null,
+        parent_guardian_name || null, parent_guardian_relation || null,
+        parent_phone || null, parent_email || null, parent_occupation || null,
+        parent_work_address || null, admission_date || new Date().toISOString().split("T")[0],
+        section_id, academic_year_id || null
       ]
     );
 
@@ -367,31 +324,18 @@ app.post("/api/students", async (req, res) => {
   }
 });
 
+// 8. حذف طالب
 app.delete("/api/students/:id", async (req, res) => {
   try {
     const studentId = req.params.id;
-
-    await executeQuery("DELETE FROM attendance WHERE student_id = $1", [
-      studentId,
-    ]);
-    await executeQuery("DELETE FROM payments WHERE student_id = $1", [
-      studentId,
-    ]);
-    await executeQuery("DELETE FROM academic_results WHERE student_id = $1", [
-      studentId,
-    ]);
+    await executeQuery("DELETE FROM attendance WHERE student_id = $1", [studentId]);
+    await executeQuery("DELETE FROM payments WHERE student_id = $1", [studentId]);
+    await executeQuery("DELETE FROM academic_results WHERE student_id = $1", [studentId]);
     await executeQuery("DELETE FROM notes WHERE student_id = $1", [studentId]);
-    await executeQuery(
-      "DELETE FROM user_student_relations WHERE student_id = $1",
-      [studentId]
-    );
-
+    await executeQuery("DELETE FROM user_student_relations WHERE student_id = $1", [studentId]);
     await executeQuery("DELETE FROM students WHERE id = $1", [studentId]);
 
-    res.json({
-      message: "تم حذف الطالب بنجاح",
-      success: true,
-    });
+    res.json({ message: "تم حذف الطالب بنجاح", success: true });
   } catch (error) {
     console.error("خطأ في حذف الطالب:", error);
     res.status(500).json({
@@ -401,32 +345,24 @@ app.delete("/api/students/:id", async (req, res) => {
   }
 });
 
+// 9. الطلاب للنماذج (الرسوم، الحضور، التقارير)
 app.get("/api/students/for-fees", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT s.id, s.first_name || ' ' || s.last_name AS name
-      FROM students s
-      WHERE s.status = 'نشط'
+      FROM students s WHERE s.status = 'نشط'
       ORDER BY s.created_at DESC
     `);
     res.json(students);
   } catch (error) {
-    console.error("خطأ في جلب الطلاب للرسوم:", error);
-    res.status(500).json({
-      error: "فشل جلب الطلاب للرسوم",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الطلاب للرسوم", details: error.message });
   }
 });
 
 app.get("/api/students/for-attendance", async (req, res) => {
   try {
     const students = await executeQuery(`
-      SELECT 
-        s.id,
-        s.first_name || ' ' || s.last_name AS name,
-        c.name AS grade,
-        sec.name AS section
+      SELECT s.id, s.first_name || ' ' || s.last_name AS name, c.name AS grade, sec.name AS section
       FROM students s
       JOIN sections sec ON s.section_id = sec.id
       JOIN classes c ON sec.class_id = c.id
@@ -435,11 +371,7 @@ app.get("/api/students/for-attendance", async (req, res) => {
     `);
     res.json(students);
   } catch (error) {
-    console.error("خطأ في جلب الطلاب للحضور:", error);
-    res.status(500).json({
-      error: "فشل جلب الطلاب للحضور",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الطلاب للحضور", details: error.message });
   }
 });
 
@@ -447,31 +379,21 @@ app.get("/api/students/for-report", async (req, res) => {
   try {
     const students = await executeQuery(`
       SELECT s.id, s.first_name || ' ' || s.last_name AS name
-      FROM students s
-      WHERE s.status = 'نشط'
+      FROM students s WHERE s.status = 'نشط'
       ORDER BY s.created_at DESC
     `);
     res.json(students);
   } catch (error) {
-    console.error("خطأ في جلب الطلاب للتقارير:", error);
-    res.status(500).json({
-      error: "فشل جلب الطلاب للتقارير",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الطلاب للتقارير", details: error.message });
   }
 });
 
-// 6. نقاط نهاية الرسوم
+// 10. تسجيل الدفعات
 app.get("/api/fees", async (req, res) => {
   try {
     const fees = await executeQuery(`
-      SELECT 
-        p.id,
-        s.first_name || ' ' || s.last_name AS studentName,
-        ft.name AS type,
-        p.amount,
-        p.payment_date AS date,
-        p.payment_method AS method
+      SELECT p.id, s.first_name || ' ' || s.last_name AS studentName, ft.name AS type,
+             p.amount, p.payment_date AS date, p.payment_method AS method
       FROM payments p
       JOIN students s ON p.student_id = s.id
       JOIN fee_types ft ON p.fee_type_id = ft.id
@@ -479,473 +401,138 @@ app.get("/api/fees", async (req, res) => {
     `);
     res.json(fees);
   } catch (error) {
-    console.error("خطأ في جلب سجل الدفعات:", error);
-    res.status(500).json({
-      error: "فشل جلب سجل الدفعات",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الدفعات", details: error.message });
   }
 });
 
 app.post("/api/fees", async (req, res) => {
   try {
-    const {
-      student_id,
-      fee_type_id,
-      amount,
-      payment_date,
-      payment_method,
-      receipt_number,
-      notes,
-    } = req.body;
-
+    const { student_id, fee_type_id, amount, payment_date, payment_method, receipt_number, notes } = req.body;
     if (!student_id || !fee_type_id || !amount) {
-      return res.status(400).json({
-        error: "الحقول المطلوبة غير مكتملة",
-        fields: [
-          !student_id && "student_id",
-          !fee_type_id && "fee_type_id",
-          !amount && "amount",
-        ].filter(Boolean),
-      });
-    }
-
-    const studentExists = await executeQuery(
-      `SELECT id FROM students WHERE id = $1`,
-      [student_id]
-    );
-    if (studentExists.length === 0) {
-      return res.status(400).json({
-        error: "الطالب المحدد غير موجود",
-        field: "student_id",
-        value: student_id,
-      });
-    }
-
-    const feeTypeExists = await executeQuery(
-      `SELECT id FROM fee_types WHERE id = $1`,
-      [fee_type_id]
-    );
-    if (feeTypeExists.length === 0) {
-      return res.status(400).json({
-        error: "نوع الرسم المحدد غير موجود",
-        field: "fee_type_id",
-        value: fee_type_id,
-      });
+      return res.status(400).json({ error: "الحقول المطلوبة غير مكتملة" });
     }
 
     await executeQuery(
-      `INSERT INTO payments (
-        student_id, fee_type_id, amount, payment_date, payment_method, receipt_number, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO payments (student_id, fee_type_id, amount, payment_date, payment_method, receipt_number, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
-        student_id,
-        fee_type_id,
-        amount,
+        student_id, fee_type_id, amount,
         payment_date || new Date().toISOString().split("T")[0],
-        payment_method || "نقدًا",
-        receipt_number || null,
-        notes || null,
+        payment_method || "نقدًا", receipt_number || null, notes || null
       ]
     );
 
-    res.status(201).json({
-      message: "تم تسجيل الدفعة بنجاح",
-      success: true,
-    });
+    res.status(201).json({ message: "تم تسجيل الدفعة بنجاح", success: true });
   } catch (error) {
-    console.error("خطأ في تسجيل الدفعة:", error);
-    res.status(500).json({
-      error: "فشل تسجيل الدفعة",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل تسجيل الدفعة", details: error.message });
   }
 });
 
-app.delete("/api/fees/:id", async (req, res) => {
-  try {
-    const paymentId = req.params.id;
-    await executeQuery("DELETE FROM payments WHERE id = $1", [paymentId]);
-    res.json({
-      message: "تم حذف الدفعة بنجاح",
-      success: true,
-    });
-  } catch (error) {
-    console.error("خطأ في حذف الدفعة:", error);
-    res.status(500).json({
-      error: "فشل حذف الدفعة",
-      details: error.message,
-    });
-  }
-});
-
-// 7. نقاط نهاية الحضور
+// 11. الحضور
 app.get("/api/attendance", async (req, res) => {
   const { date } = req.query;
   try {
-    const attendance = await executeQuery(
-      `
-      SELECT 
-        a.id,
-        a.student_id,
-        s.first_name || ' ' || s.last_name AS name,
-        c.name AS grade,
-        sec.name AS section,
-        a.status,
-        a.time_in,
-        a.time_out,
-        a.notes
+    const attendance = await executeQuery(`
+      SELECT a.id, a.student_id, s.first_name || ' ' || s.last_name AS name, c.name AS grade, sec.name AS section,
+             a.status, a.time_in, a.time_out, a.notes
       FROM attendance a
       JOIN students s ON a.student_id = s.id
       JOIN sections sec ON s.section_id = sec.id
       JOIN classes c ON sec.class_id = c.id
       WHERE a.date = $1
       ORDER BY c.order_number, sec.name, s.first_name
-    `,
-      [date || new Date().toISOString().split("T")[0]]
-    );
+    `, [date || new Date().toISOString().split("T")[0]]);
     res.json(attendance);
   } catch (error) {
-    console.error("خطأ في جلب بيانات الحضور:", error);
-    res.status(500).json({
-      error: "فشل جلب بيانات الحضور",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الحضور", details: error.message });
   }
 });
 
 app.post("/api/attendance", async (req, res) => {
   try {
     const { student_id, date, status, time_in, time_out, notes } = req.body;
-
     if (!student_id || !date || !status) {
-      return res.status(400).json({
-        error: "الحقول المطلوبة غير مكتملة",
-        fields: [
-          !student_id && "student_id",
-          !date && "date",
-          !status && "status",
-        ].filter(Boolean),
-      });
-    }
-
-    const studentExists = await executeQuery(
-      `SELECT id FROM students WHERE id = $1`,
-      [student_id]
-    );
-    if (studentExists.length === 0) {
-      return res.status(400).json({
-        error: "الطالب المحدد غير موجود",
-        field: "student_id",
-        value: student_id,
-      });
+      return res.status(400).json({ error: "الحقول المطلوبة غير مكتملة" });
     }
 
     const existing = await executeQuery(
-      `SELECT id FROM attendance WHERE student_id = $1 AND date = $2`,
-      [student_id, date]
+      `SELECT id FROM attendance WHERE student_id = $1 AND date = $2`, [student_id, date]
     );
 
     if (existing.length > 0) {
       await executeQuery(
-        `UPDATE attendance 
-         SET status = $1, time_in = $2, time_out = $3, notes = $4
-         WHERE student_id = $5 AND date = $6`,
+        `UPDATE attendance SET status = $1, time_in = $2, time_out = $3, notes = $4 WHERE student_id = $5 AND date = $6`,
         [status, time_in, time_out, notes, student_id, date]
       );
     } else {
       await executeQuery(
-        `INSERT INTO attendance (
-          student_id, date, status, time_in, time_out, notes
-        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        `INSERT INTO attendance (student_id, date, status, time_in, time_out, notes) VALUES ($1, $2, $3, $4, $5, $6)`,
         [student_id, date, status, time_in, time_out, notes]
       );
     }
 
-    res.status(201).json({
-      message: "تم تحديث بيانات الحضور بنجاح",
-      success: true,
-    });
+    res.status(201).json({ message: "تم تحديث بيانات الحضور بنجاح", success: true });
   } catch (error) {
-    console.error("خطأ في تسجيل الحضور:", error);
-    res.status(500).json({
-      error: "فشل تسجيل الحضور",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل تسجيل الحضور", details: error.message });
   }
 });
 
-app.delete("/api/attendance/:id", async (req, res) => {
-  try {
-    const attendanceId = req.params.id;
-    await executeQuery("DELETE FROM attendance WHERE id = $1", [attendanceId]);
-    res.json({
-      message: "تم حذف سجل الحضور بنجاح",
-      success: true,
-    });
-  } catch (error) {
-    console.error("خطأ في حذف سجل الحضور:", error);
-    res.status(500).json({
-      error: "فشل حذف سجل الحضور",
-      details: error.message,
-    });
-  }
-});
-
-// 8. نقاط نهاية التقارير
+// 12. التقارير
 app.get("/api/reports/student/:id", async (req, res) => {
   try {
     const studentId = req.params.id;
-
-    const studentResult = await executeQuery(
-      `
-      SELECT 
-        s.id,
-        s.first_name || ' ' || s.last_name AS name,
-        s.id AS idNumber,
-        c.name AS grade,
-        sec.name AS section,
-        s.parent_phone AS phone,
-        s.parent_email AS email,
-        s.admission_date AS createdAt
+    const studentResult = await executeQuery(`
+      SELECT s.id, s.first_name || ' ' || s.last_name AS name, c.name AS grade, sec.name AS section
       FROM students s
       JOIN sections sec ON s.section_id = sec.id
       JOIN classes c ON sec.class_id = c.id
       WHERE s.id = $1
-    `,
-      [studentId]
-    );
+    `, [studentId]);
 
     if (studentResult.length === 0) {
-      return res.status(404).json({
-        error: "الطالب غير موجود",
-        studentId,
-      });
+      return res.status(404).json({ error: "الطالب غير موجود" });
     }
 
     const student = studentResult[0];
-
     const attendance = await executeQuery(
-      `
-      SELECT date, status
-      FROM attendance
-      WHERE student_id = $1 
-        AND EXTRACT(MONTH FROM date) = EXTRACT(MONTH FROM CURRENT_DATE)
-        AND EXTRACT(YEAR FROM date) = EXTRACT(YEAR FROM CURRENT_DATE)
-      ORDER BY date ASC
-    `,
+      `SELECT date, status FROM attendance WHERE student_id = $1 AND EXTRACT(MONTH FROM date) = EXTRACT(MONTH FROM CURRENT_DATE)`,
       [studentId]
     );
 
-    const totalDays = attendance.length;
-    const presentDays = attendance.filter((a) => a.status === "حاضر").length;
-    const absentDays = attendance.filter((a) => a.status === "غائب").length;
-    const attendanceRate =
-      totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 100;
-    const absenceRate =
-      totalDays > 0 ? Math.round((absentDays / totalDays) * 100) : 0;
-
-    const feeTypes = await executeQuery(
-      `
-      SELECT ft.id, ft.name, ft.amount AS required
+    const feesBreakdown = await executeQuery(`
+      SELECT ft.name, ft.amount AS required, COALESCE(SUM(p.amount), 0) AS paid
       FROM fee_types ft
-      WHERE ft.class_id = (
-        SELECT c.id FROM students s
-        JOIN sections sec ON s.section_id = sec.id
-        JOIN classes c ON sec.class_id = c.id
-        WHERE s.id = $1
-      )
-    `,
-      [studentId]
-    );
-
-    const paymentsByType = await executeQuery(
-      `
-      SELECT ft.id AS fee_type_id, ft.name AS fee_type_name, SUM(p.amount) AS paid
-      FROM payments p
-      JOIN fee_types ft ON p.fee_type_id = ft.id
-      WHERE p.student_id = $1
+      LEFT JOIN payments p ON ft.id = p.fee_type_id AND p.student_id = $1
       GROUP BY ft.id, ft.name
-    `,
-      [studentId]
-    );
-
-    const feesBreakdown = feeTypes.map((ft) => {
-      const payment = paymentsByType.find((p) => p.fee_type_id === ft.id);
-      return {
-        type: ft.name,
-        required: ft.required,
-        paid: payment ? payment.paid : 0,
-        pending: ft.required - (payment ? payment.paid : 0),
-      };
-    });
-
-    const totalFees = feesBreakdown.reduce((sum, fee) => sum + fee.required, 0);
-    const totalPaid = feesBreakdown.reduce((sum, fee) => sum + fee.paid, 0);
-    const totalPending = totalFees - totalPaid;
-
-    const discounts = await executeQuery(
-      `
-      SELECT amount, percentage, reason, approved_by, approval_date
-      FROM discounts
-      WHERE student_id = $1
-      ORDER BY approval_date DESC
-    `,
-      [studentId]
-    );
-
-    let totalDiscount = 0;
-    let discountPercentage = 0;
-    if (discounts.length > 0) {
-      totalDiscount = discounts.reduce((sum, d) => sum + d.amount, 0);
-      discountPercentage =
-        totalFees > 0 ? Math.round((totalDiscount / totalFees) * 100) : 0;
-    }
-
-    const finalPending = totalPending - totalDiscount;
+    `, [studentId]);
 
     res.json({
-      student: {
-        ...student,
-        gradeSection: `${student.grade} - ${student.section}`,
-      },
+      student,
       attendance,
-      attendanceRate,
-      absenceRate,
       feesBreakdown,
-      totalFees,
-      totalPaid,
-      totalPending,
-      discounts,
-      totalDiscount,
-      discountPercentage,
-      finalPending,
-      financialStatus: finalPending <= 0 ? "مسدد" : "متأخر",
+      financialStatus: "متأخر"
     });
   } catch (error) {
-    console.error("خطأ في جلب تقرير الطالب:", error);
-    res.status(500).json({
-      error: "فشل جلب تقرير الطالب",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب التقرير", details: error.message });
   }
 });
 
-// 9. نقاط نهاية الخصومات
-app.post("/api/discounts", async (req, res) => {
-  try {
-    const {
-      student_id,
-      amount,
-      percentage,
-      reason,
-      academic_year_id,
-      approved_by,
-    } = req.body;
-
-    if (!student_id || (!amount && !percentage) || !reason || !approved_by) {
-      return res.status(400).json({
-        error: "الحقول المطلوبة غير مكتملة",
-        fields: [
-          !student_id && "student_id",
-          !amount && !percentage && "amount أو percentage",
-          !reason && "reason",
-          !approved_by && "approved_by",
-        ].filter(Boolean),
-      });
-    }
-
-    const studentExists = await executeQuery(
-      `SELECT id FROM students WHERE id = $1`,
-      [student_id]
-    );
-    if (studentExists.length === 0) {
-      return res.status(400).json({
-        error: "الطالب المحدد غير موجود",
-        field: "student_id",
-        value: student_id,
-      });
-    }
-
-    let finalAmount = amount;
-    if (percentage && !amount) {
-      const totalFeesResult = await executeQuery(
-        `
-        SELECT SUM(ft.amount) AS total
-        FROM fee_types ft
-        WHERE ft.class_id = (
-          SELECT c.id FROM students s
-          JOIN sections sec ON s.section_id = sec.id
-          JOIN classes c ON sec.class_id = c.id
-          WHERE s.id = $1
-        )
-      `,
-        [student_id]
-      );
-      const totalFees = totalFeesResult[0]?.total || 0;
-      finalAmount = (totalFees * percentage) / 100;
-    }
-
-    await executeQuery(
-      `INSERT INTO discounts (
-        student_id, amount, percentage, reason, academic_year_id, approved_by, approval_date
-      ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)`,
-      [
-        student_id,
-        finalAmount,
-        percentage || null,
-        reason,
-        academic_year_id || null,
-        approved_by,
-      ]
-    );
-
-    res.status(201).json({
-      message: "تم تسجيل الخصم بنجاح",
-      success: true,
-    });
-  } catch (error) {
-    console.error("خطأ في تسجيل الخصم:", error);
-    res.status(500).json({
-      error: "فشل تسجيل الخصم",
-      details: error.message,
-    });
-  }
-});
-
-// 10. نقطة نهاية الأعوام الدراسية
+// 13. الأعوام الدراسية
 app.get("/api/academic-years", async (req, res) => {
   try {
-    const academicYears = await executeQuery(`
-      SELECT id, name, start_date, end_date, is_current
-      FROM academic_years
-      ORDER BY start_date DESC
-    `);
-    res.json(academicYears);
+    const years = await executeQuery("SELECT id, name, start_date, end_date, is_current FROM academic_years ORDER BY start_date DESC");
+    res.json(years);
   } catch (error) {
-    console.error("خطأ في جلب الأعوام الدراسية:", error);
-    res.status(500).json({
-      error: "فشل جلب الأعوام الدراسية",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل جلب الأعوام", details: error.message });
   }
 });
 
-// 11. نقطة نهاية إنشاء مستخدم جديد
+// 14. إنشاء مستخدم
 app.post("/api/users", async (req, res) => {
   try {
     const { username, email, password, role } = req.body;
-
     if (!username || !email || !password || !role) {
-      return res.status(400).json({
-        error: "الحقول المطلوبة غير مكتملة",
-        fields: [
-          !username && "username",
-          !email && "email",
-          !password && "password",
-          !role && "role",
-        ].filter(Boolean),
-      });
+      return res.status(400).json({ error: "جميع الحقول مطلوبة" });
     }
 
     const existingUser = await executeQuery(
@@ -953,10 +540,7 @@ app.post("/api/users", async (req, res) => {
       [username, email]
     );
     if (existingUser.length > 0) {
-      return res.status(400).json({
-        error: "المستخدم موجود مسبقًا",
-        details: "اسم المستخدم أو البريد الإلكتروني مستخدم من قبل",
-      });
+      return res.status(400).json({ error: "المستخدم موجود مسبقًا" });
     }
 
     await executeQuery(
@@ -964,20 +548,13 @@ app.post("/api/users", async (req, res) => {
       [username, email, password, role]
     );
 
-    res.status(201).json({
-      message: "تم إنشاء المستخدم بنجاح",
-      success: true,
-    });
+    res.status(201).json({ message: "تم إنشاء المستخدم بنجاح", success: true });
   } catch (error) {
-    console.error("خطأ في إنشاء المستخدم:", error);
-    res.status(500).json({
-      error: "فشل إنشاء المستخدم",
-      details: error.message,
-    });
+    res.status(500).json({ error: "فشل إنشاء المستخدم", details: error.message });
   }
 });
 
-// التعامل مع المسارات غير المعرفة
+// 15. التعامل مع المسارات غير المعرفة
 app.use((req, res) => {
   res.status(404).json({
     error: "المسار غير موجود",
@@ -985,7 +562,7 @@ app.use((req, res) => {
   });
 });
 
-// معالجة الأخطاء العامة
+// 16. معالجة الأخطاء العامة
 app.use((err, req, res, next) => {
   console.error("❌ خطأ غير متوقع:", err);
   res.status(500).json({
@@ -994,7 +571,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// بدء الخادم
+// 17. بدء السيرفر
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ السيرفر يعمل على المنفذ ${PORT}`);
+  console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
 });
