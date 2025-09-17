@@ -1117,6 +1117,5 @@ app.use((err, req, res, next) => {
 
 // بدء الخادم
 app.listen(PORT, () => {
-  console.log(`الخادم يعمل على http://localhost:10000`);
-  console.log(`الخادم يعمل على المنفذ: ${PORT}`);
+  console.log(`السيرفر يعمل على المنفذ: ${PORT}`);
 });
