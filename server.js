@@ -647,11 +647,56 @@ app.use((err, req, res, next) => {
     details: "يرجى المحاولة لاحقًا",
   });
 });
+// --- دالة لتنفيذ محتوى ملف db.sql ---
+const initializeDatabaseSchema = async () => {
+  try {
+    // تحقق من وجود الجدول students
+    const checkTable = await executeQuery(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'students'
+      );
+    `);
+
+    if (!checkTable[0].exists) {
+      console.log('🔄 جاري إنشاء الجداول من db.sql...');
+
+      // استخدم require لإدخال محتوى db.sql كنص
+      const fs = require('fs');
+      const path = require('path');
+      const dbSQLPath = path.join(__dirname, 'db.sql');
+      const sqlContent = fs.readFileSync(dbSQLPath, 'utf8');
+
+      // تقسيم الأوامر وتنفيذها واحدة تلو الأخرى
+      const statements = sqlContent
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const stmt of statements) {
+        try {
+          await executeQuery(stmt + ';');
+        } catch (err) {
+          console.warn('تحذير في تنفيذ أمر SQL:', err.message);
+        }
+      }
+
+      console.log('✅ تم تنفيذ db.sql بنجاح');
+    } else {
+      console.log('🟢 الجداول موجودة مسبقًا. لا حاجة للإعادة.');
+    }
+  } catch (error) {
+    console.error('❌ خطأ في تنفيذ db.sql:', error.message);
+    throw error;
+  }
+};
 
 // 17. بدء السيرفر
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
-  await initializeDatabase(); // بدء اتصال قاعدة البيانات
+  await initializeDatabase();           // الاتصال بقاعدة البيانات
+  await initializeDatabaseSchema();     // إنشاء الجداول من db.sql
 });
 
 // --- إدارة إعادة الاتصال التلقائي ---

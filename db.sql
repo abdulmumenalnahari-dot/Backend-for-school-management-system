@@ -1,3 +1,4 @@
+-- أنواع البيانات المخصصة
 CREATE TYPE school_level AS ENUM ('ابتدائي', 'متوسط');
 CREATE TYPE gender_type AS ENUM ('ذكر', 'أنثى');
 CREATE TYPE student_status AS ENUM ('نشط', 'منفصل', 'متخرج', 'منقول');
@@ -11,6 +12,7 @@ CREATE TYPE notification_type AS ENUM ('مهم', 'عادي', 'تنبيه');
 CREATE TYPE user_role AS ENUM ('مدير', 'معلم', 'موظف استقبال', 'ولي أمر');
 CREATE TYPE day_of_week AS ENUM ('السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة');
 
+-- جدول الأعوام الدراسية
 CREATE TABLE IF NOT EXISTS academic_years (
     id SERIAL PRIMARY KEY,
     name VARCHAR(20) NOT NULL,
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS academic_years (
     UNIQUE (name)
 );
 
+-- جدول الصفوف
 CREATE TABLE IF NOT EXISTS classes (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
@@ -31,6 +34,7 @@ CREATE TABLE IF NOT EXISTS classes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- جدول الشعب
 CREATE TABLE IF NOT EXISTS sections (
     id SERIAL PRIMARY KEY,
     class_id INT NOT NULL,
@@ -42,39 +46,41 @@ CREATE TABLE IF NOT EXISTS sections (
     UNIQUE (class_id, name)
 );
 
+-- جدول الطلاب
 CREATE TABLE IF NOT EXISTS students (
-  id VARCHAR(20) PRIMARY KEY,
-  user_id INT,
-  first_name VARCHAR(50) NOT NULL,
-  middle_name VARCHAR(50) NOT NULL,
-  third_name VARCHAR(50) NOT NULL,
-  family_name VARCHAR(50) NOT NULL,
-  full_name VARCHAR(200) GENERATED ALWAYS AS (first_name || ' ' || middle_name || ' ' || third_name || ' ' || family_name) STORED,
-  gender gender_type NOT NULL,
-  birth_date DATE NOT NULL,
-  nationality VARCHAR(50) NOT NULL DEFAULT 'يمني',
-  religion VARCHAR(30) DEFAULT 'إسلام',
-  address TEXT,
-  emergency_contact VARCHAR(15),
-  medical_conditions TEXT,
-  blood_type VARCHAR(10),
-  parent_guardian_name VARCHAR(100),
-  parent_guardian_relation VARCHAR(20),
-  parent_phone VARCHAR(15),
-  parent_email VARCHAR(100),
-  parent_occupation VARCHAR(100),
-  parent_work_address TEXT,
-  admission_date DATE,
-  section_id INT,
-  academic_year_id INT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL,
-  FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL,
-  UNIQUE (id)
+    id VARCHAR(20) PRIMARY KEY,
+    user_id INT,
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50) NOT NULL,
+    third_name VARCHAR(50) NOT NULL,
+    family_name VARCHAR(50) NOT NULL,
+    full_name VARCHAR(200) GENERATED ALWAYS AS (first_name || ' ' || middle_name || ' ' || third_name || ' ' || family_name) STORED,
+    gender gender_type NOT NULL,
+    birth_date DATE NOT NULL,
+    nationality VARCHAR(50) NOT NULL DEFAULT 'يمني',
+    religion VARCHAR(30) DEFAULT 'إسلام',
+    address TEXT,
+    emergency_contact VARCHAR(15),
+    medical_conditions TEXT,
+    blood_type VARCHAR(10),
+    parent_guardian_name VARCHAR(100),
+    parent_guardian_relation VARCHAR(20),
+    parent_phone VARCHAR(15),
+    parent_email VARCHAR(100),
+    parent_occupation VARCHAR(100),
+    parent_work_address TEXT,
+    admission_date DATE,
+    section_id INT,
+    academic_year_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL,
+    UNIQUE (id)
 );
 
+-- جدول المعلمين
 CREATE TABLE IF NOT EXISTS teachers (
     id VARCHAR(20) PRIMARY KEY,
     user_id INT,
@@ -98,6 +104,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     UNIQUE (email)
 );
 
+-- جدول المواد
 CREATE TABLE IF NOT EXISTS subjects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -109,6 +116,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     UNIQUE (code)
 );
 
+-- جدول المقررات
 CREATE TABLE IF NOT EXISTS courses (
     id SERIAL PRIMARY KEY,
     subject_id INT NOT NULL,
@@ -125,6 +133,7 @@ CREATE TABLE IF NOT EXISTS courses (
     UNIQUE (subject_id, class_id, academic_year_id, semester)
 );
 
+-- جدول الحضور
 CREATE TABLE IF NOT EXISTS attendance (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR(20) NOT NULL,
@@ -139,6 +148,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE (student_id, date)
 );
 
+-- جدول أنواع الرسوم
 CREATE TABLE IF NOT EXISTS fee_types (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
@@ -153,6 +163,7 @@ CREATE TABLE IF NOT EXISTS fee_types (
     UNIQUE (name, class_id)
 );
 
+-- جدول الدفعات
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR(20) NOT NULL,
@@ -168,6 +179,7 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY (fee_type_id) REFERENCES fee_types(id) ON DELETE CASCADE
 );
 
+-- جدول الخصومات
 CREATE TABLE IF NOT EXISTS discounts (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR(20) NOT NULL,
@@ -183,6 +195,7 @@ CREATE TABLE IF NOT EXISTS discounts (
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
 );
 
+-- جدول الجداول الزمنية
 CREATE TABLE IF NOT EXISTS schedules (
     id SERIAL PRIMARY KEY,
     section_id INT NOT NULL,
@@ -198,6 +211,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     UNIQUE (section_id, day_of_week, start_time, end_time)
 );
 
+-- جدول النتائج الأكاديمية
 CREATE TABLE IF NOT EXISTS academic_results (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR(20) NOT NULL,
@@ -217,6 +231,7 @@ CREATE TABLE IF NOT EXISTS academic_results (
     UNIQUE (student_id, course_id, academic_year_id, semester, term)
 );
 
+-- جدول الملاحظات
 CREATE TABLE IF NOT EXISTS notes (
     id SERIAL PRIMARY KEY,
     student_id VARCHAR(20) NOT NULL,
@@ -230,6 +245,7 @@ CREATE TABLE IF NOT EXISTS notes (
     FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
 );
 
+-- جدول المستخدمين
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) NOT NULL,
@@ -244,6 +260,7 @@ CREATE TABLE IF NOT EXISTS users (
     UNIQUE (email)
 );
 
+-- جدول علاقات المستخدمين بالطلاب
 CREATE TABLE IF NOT EXISTS user_student_relations (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
@@ -257,6 +274,7 @@ CREATE TABLE IF NOT EXISTS user_student_relations (
     UNIQUE (user_id, student_id, relation)
 );
 
+-- جدول الإشعارات
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
@@ -269,6 +287,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- جدول الإعدادات
 CREATE TABLE IF NOT EXISTS settings (
     id SERIAL PRIMARY KEY,
     setting_key VARCHAR(100) NOT NULL,
@@ -280,37 +299,80 @@ CREATE TABLE IF NOT EXISTS settings (
     UNIQUE (setting_key)
 );
 
+-- دالة لتحديث حقل updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE 'plpgsql';
 
+-- إنشاء Triggers لتحديث updated_at لكل جدول
+DROP TRIGGER IF EXISTS update_classes_updated_at ON classes;
 CREATE TRIGGER update_classes_updated_at BEFORE UPDATE ON classes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_sections_updated_at ON sections;
 CREATE TRIGGER update_sections_updated_at BEFORE UPDATE ON sections FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_students_updated_at ON students;
 CREATE TRIGGER update_students_updated_at BEFORE UPDATE ON students FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_teachers_updated_at ON teachers;
 CREATE TRIGGER update_teachers_updated_at BEFORE UPDATE ON teachers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_subjects_updated_at ON subjects;
 CREATE TRIGGER update_subjects_updated_at BEFORE UPDATE ON subjects FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_academic_years_updated_at ON academic_years;
 CREATE TRIGGER update_academic_years_updated_at BEFORE UPDATE ON academic_years FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_courses_updated_at ON courses;
 CREATE TRIGGER update_courses_updated_at BEFORE UPDATE ON courses FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_attendance_updated_at ON attendance;
 CREATE TRIGGER update_attendance_updated_at BEFORE UPDATE ON attendance FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_fee_types_updated_at ON fee_types;
 CREATE TRIGGER update_fee_types_updated_at BEFORE UPDATE ON fee_types FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_payments_updated_at ON payments;
 CREATE TRIGGER update_payments_updated_at BEFORE UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_discounts_updated_at ON discounts;
 CREATE TRIGGER update_discounts_updated_at BEFORE UPDATE ON discounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_schedules_updated_at ON schedules;
 CREATE TRIGGER update_schedules_updated_at BEFORE UPDATE ON schedules FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_academic_results_updated_at ON academic_results;
 CREATE TRIGGER update_academic_results_updated_at BEFORE UPDATE ON academic_results FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_notes_updated_at ON notes;
 CREATE TRIGGER update_notes_updated_at BEFORE UPDATE ON notes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_user_student_relations_updated_at ON user_student_relations;
 CREATE TRIGGER update_user_student_relations_updated_at BEFORE UPDATE ON user_student_relations FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_notifications_updated_at ON notifications;
 CREATE TRIGGER update_notifications_updated_at BEFORE UPDATE ON notifications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_settings_updated_at ON settings;
 CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-INSERT INTO academic_years (name, start_date, end_date, is_current) VALUES
-('2024-2025', '2024-09-01', '2025-06-30', TRUE),
-('2023-2024', '2023-09-01', '2024-06-30', FALSE);
+-- إدخال الأعوام الدراسية
+INSERT INTO academic_years (name, start_date, end_date, is_current)
+VALUES ('2024-2025', '2024-09-01', '2025-06-30', TRUE)
+ON CONFLICT (name) DO NOTHING;
 
+INSERT INTO academic_years (name, start_date, end_date, is_current)
+VALUES ('2023-2024', '2023-09-01', '2024-06-30', FALSE)
+ON CONFLICT (name) DO NOTHING;
+
+-- إدخال الصفوف
 INSERT INTO classes (name, level, order_number) VALUES
 ('الصف الأول الابتدائي', 'ابتدائي', 1),
 ('الصف الثاني الابتدائي', 'ابتدائي', 2),
@@ -320,15 +382,20 @@ INSERT INTO classes (name, level, order_number) VALUES
 ('الصف السادس الابتدائي', 'ابتدائي', 6),
 ('الصف الأول المتوسط', 'متوسط', 7),
 ('الصف الثاني المتوسط', 'متوسط', 8),
-('الصف الثالث المتوسط', 'متوسط', 9);
+('الصف الثالث المتوسط', 'متوسط', 9)
+ON CONFLICT (name) DO NOTHING;
+
+-- إدخال الشعب
+INSERT INTO sections (class_id, name)
+SELECT c.id, 'أ' FROM classes c LEFT JOIN sections s ON c.id = s.class_id AND s.name = 'أ' WHERE s.id IS NULL;
 
 INSERT INTO sections (class_id, name)
-SELECT id, 'أ' FROM classes;
-INSERT INTO sections (class_id, name)
-SELECT id, 'ب' FROM classes;
-INSERT INTO sections (class_id, name)
-SELECT id, 'ج' FROM classes;
+SELECT c.id, 'ب' FROM classes c LEFT JOIN sections s ON c.id = s.class_id AND s.name = 'ب' WHERE s.id IS NULL;
 
+INSERT INTO sections (class_id, name)
+SELECT c.id, 'ج' FROM classes c LEFT JOIN sections s ON c.id = s.class_id AND s.name = 'ج' WHERE s.id IS NULL;
+
+-- إدخال المواد
 INSERT INTO subjects (name, code, description, class_level) VALUES
 ('القرآن الكريم', 'QURAN', 'حفظ وتلاوة وتجويد وفهم معاني الآيات', 'ابتدائي'),
 ('اللغة العربية', 'ARAB', 'قراءة، كتابة، نحو، بلاغة، أدب', 'ابتدائي'),
@@ -336,15 +403,26 @@ INSERT INTO subjects (name, code, description, class_level) VALUES
 ('العلوم', 'SCI', 'العالم الطبيعي، البيئة، الفيزياء الأساسية', 'ابتدائي'),
 ('الدراسات الاجتماعية', 'SST', 'التاريخ المحلي، الجغرافيا، المواطنة', 'ابتدائي'),
 ('التربية الإسلامية', 'ISLAMIC', 'العقيدة، العبادات، الأخلاق، السيرة', 'ابتدائي'),
-('اللغة الإنجليزية', 'ENGL', 'مهارات الاستماع والتحدث والقراءة والكتابة', 'متوسط');
+('اللغة الإنجليزية', 'ENGL', 'مهارات الاستماع والتحدث والقراءة والكتابة', 'متوسط')
+ON CONFLICT (code) DO NOTHING;
+
+-- إدخال أنواع الرسوم
+INSERT INTO fee_types (name, description, amount, class_id, is_mandatory, due_date)
+SELECT 'الرسوم الدراسية', 'الرسوم الأساسية للعام الدراسي', 120000, c.id, TRUE, '2024-09-15'
+FROM classes c
+ON CONFLICT (name, class_id) DO NOTHING;
 
 INSERT INTO fee_types (name, description, amount, class_id, is_mandatory, due_date)
-SELECT 'الرسوم الدراسية', 'الرسوم الأساسية للعام الدراسي', 120000, id, TRUE, '2024-09-15' FROM classes;
-INSERT INTO fee_types (name, description, amount, class_id, is_mandatory, due_date)
-SELECT 'الكتب والمستلزمات', 'تكلفة الكتب والكراسات والأدوات', 35000, id, TRUE, '2024-09-15' FROM classes;
-INSERT INTO fee_types (name, description, amount, class_id, is_mandatory, due_date)
-SELECT 'الأنشطة المدرسية', 'أنشطة ثقافية، رياضية، مسرحية', 20000, id, TRUE, '2024-09-15' FROM classes;
+SELECT 'الكتب والمستلزمات', 'تكلفة الكتب والكراسات والأدوات', 35000, c.id, TRUE, '2024-09-15'
+FROM classes c
+ON CONFLICT (name, class_id) DO NOTHING;
 
+INSERT INTO fee_types (name, description, amount, class_id, is_mandatory, due_date)
+SELECT 'الأنشطة المدرسية', 'أنشطة ثقافية، رياضية، مسرحية', 20000, c.id, TRUE, '2024-09-15'
+FROM classes c
+ON CONFLICT (name, class_id) DO NOTHING;
+
+-- إدخال الإعدادات
 INSERT INTO settings (setting_key, setting_value, description, group_name) VALUES
 ('school_name', 'مدرسة الفجر النموذجية', 'اسم المدرسة', 'عام'),
 ('school_address', 'صنعاء، شارع الزبيري، الحي السياسي', 'عنوان المدرسة', 'عام'),
@@ -354,105 +432,110 @@ INSERT INTO settings (setting_key, setting_value, description, group_name) VALUE
 ('attendance_start_time', '07:30:00', 'وقت بداية الحضور', 'الحضور'),
 ('attendance_end_time', '13:30:00', 'وقت نهاية الدوام', 'الحضور'),
 ('late_threshold', '10', 'الحد الأقصى للتأخير بالدقائق', 'الحضور'),
-('max_absences', '12', 'الحد الأقصى للغياب قبل الإنذار', 'الحضور');
+('max_absences', '12', 'الحد الأقصى للغياب قبل الإنذار', 'الحضور')
+ON CONFLICT (setting_key) DO NOTHING;
 
-INSERT INTO teachers (id, first_name, last_name, gender, birth_date, phone, email, qualification, specialization, hire_date, salary, status)
-VALUES
+-- إدخال المعلمين
+INSERT INTO teachers (id, first_name, last_name, gender, birth_date, phone, email, qualification, specialization, hire_date, salary, status) VALUES
 ('T001', 'أحمد', 'المحمدي', 'ذكر', '1985-03-15', '770123456', 'ahmed@school.ye', 'ماجستير تربية', 'اللغة العربية', '2020-08-01', 150000, 'نشط'),
 ('T002', 'فاطمة', 'السعيدي', 'أنثى', '1990-06-20', '770987654', 'fatima@school.ye', 'بكالوريوس تربية', 'القرآن الكريم', '2019-08-01', 130000, 'نشط'),
 ('T003', 'محمد', 'الرضوان', 'ذكر', '1988-11-10', '770223344', 'mohammed@school.ye', 'بكالوريوس رياضيات', 'الرياضيات', '2018-08-01', 140000, 'نشط'),
 ('T004', 'نادية', 'الوهبي', 'أنثى', '1992-01-05', '770334455', 'nadia@school.ye', 'بكالوريوس علوم', 'العلوم', '2021-08-01', 135000, 'نشط'),
 ('T005', 'سامي', 'الحميدي', 'ذكر', '1987-07-14', '770445566', 'sami@school.ye', 'بكالوريوس دراسات اجتماعية', 'الدراسات الاجتماعية', '2017-08-01', 138000, 'نشط'),
 ('T006', 'إيمان', 'الشامي', 'أنثى', '1991-09-22', '770556677', 'iman@school.ye', 'ماجستير تربية إسلامية', 'التربية الإسلامية', '2020-08-01', 142000, 'نشط'),
-('T007', 'خالد', 'المرتضى', 'ذكر', '1989-12-30', '770667788', 'khaled@school.ye', 'دبلوم لغة إنجليزية', 'اللغة الإنجليزية', '2019-08-01', 137000, 'نشط');
+('T007', 'خالد', 'المرتضى', 'ذكر', '1989-12-30', '770667788', 'khaled@school.ye', 'دبلوم لغة إنجليزية', 'اللغة الإنجليزية', '2019-08-01', 137000, 'نشط')
+ON CONFLICT (id) DO NOTHING;
 
+-- إدخال المقررات تلقائيًا
 DO $$
 DECLARE
     current_year_id INT;
 BEGIN
     SELECT id INTO current_year_id FROM academic_years WHERE is_current = TRUE LIMIT 1;
+    IF current_year_id IS NOT NULL THEN
 
-    INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
-    SELECT s.id, c.id,
-           CASE s.code
-             WHEN 'QURAN' THEN 'T002'
-             WHEN 'ARAB' THEN 'T001'
-             WHEN 'MATH' THEN 'T003'
-             WHEN 'SCI' THEN 'T004'
-           END,
-           current_year_id, 'أول'
-    FROM subjects s
-    CROSS JOIN classes c
-    WHERE c.order_number IN (1,2)
-      AND s.code IN ('QURAN', 'ARAB', 'MATH', 'SCI');
-
-    INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
-    SELECT s.id, c.id,
-           CASE s.code
-             WHEN 'SST' THEN 'T005'
-             ELSE
+        INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
+        SELECT s.id, c.id,
                CASE s.code
                  WHEN 'QURAN' THEN 'T002'
                  WHEN 'ARAB' THEN 'T001'
                  WHEN 'MATH' THEN 'T003'
                  WHEN 'SCI' THEN 'T004'
-               END
-           END,
-           current_year_id, 'أول'
-    FROM subjects s
-    CROSS JOIN classes c
-    WHERE c.order_number IN (3,4)
-      AND s.code IN ('QURAN', 'ARAB', 'MATH', 'SCI', 'SST');
+                 ELSE NULL
+               END,
+               current_year_id, 'أول'
+        FROM subjects s CROSS JOIN classes c
+        WHERE c.order_number IN (1,2) AND s.code IN ('QURAN','ARAB','MATH','SCI')
+        ON CONFLICT (subject_id, class_id, academic_year_id, semester) DO NOTHING;
 
-    INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
-    SELECT s.id, c.id,
-           CASE s.code
-             WHEN 'ISLAMIC' THEN 'T006'
-             WHEN 'SST' THEN 'T005'
-             ELSE
+        INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
+        SELECT s.id, c.id,
                CASE s.code
-                 WHEN 'QURAN' THEN 'T002'
-                 WHEN 'ARAB' THEN 'T001'
-                 WHEN 'MATH' THEN 'T003'
-                 WHEN 'SCI' THEN 'T004'
-               END
-           END,
-           current_year_id, 'أول'
-    FROM subjects s
-    CROSS JOIN classes c
-    WHERE c.order_number IN (5,6)
-      AND s.code IN ('QURAN', 'ARAB', 'MATH', 'SCI', 'SST', 'ISLAMIC');
+                 WHEN 'SST' THEN 'T005'
+                 ELSE CASE s.code
+                   WHEN 'QURAN' THEN 'T002'
+                   WHEN 'ARAB' THEN 'T001'
+                   WHEN 'MATH' THEN 'T003'
+                   WHEN 'SCI' THEN 'T004'
+                   ELSE NULL
+                 END
+               END,
+               current_year_id, 'أول'
+        FROM subjects s CROSS JOIN classes c
+        WHERE c.order_number IN (3,4) AND s.code IN ('QURAN','ARAB','MATH','SCI','SST')
+        ON CONFLICT (subject_id, class_id, academic_year_id, semester) DO NOTHING;
 
-    INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
-    SELECT s.id, c.id,
-           CASE s.code
-             WHEN 'ENGL' THEN 'T007'
-             WHEN 'ISLAMIC' THEN 'T006'
-             WHEN 'SST' THEN 'T005'
-             ELSE
+        INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
+        SELECT s.id, c.id,
                CASE s.code
-                 WHEN 'QURAN' THEN 'T002'
-                 WHEN 'ARAB' THEN 'T001'
-                 WHEN 'MATH' THEN 'T003'
-                 WHEN 'SCI' THEN 'T004'
-               END
-           END,
-           current_year_id, 'أول'
-    FROM subjects s
-    CROSS JOIN classes c
-    WHERE c.order_number IN (7,8,9)
-      AND s.code IN ('QURAN', 'ARAB', 'MATH', 'SCI', 'SST', 'ISLAMIC', 'ENGL');
+                 WHEN 'ISLAMIC' THEN 'T006'
+                 WHEN 'SST' THEN 'T005'
+                 ELSE CASE s.code
+                   WHEN 'QURAN' THEN 'T002'
+                   WHEN 'ARAB' THEN 'T001'
+                   WHEN 'MATH' THEN 'T003'
+                   WHEN 'SCI' THEN 'T004'
+                   ELSE NULL
+                 END
+               END,
+               current_year_id, 'أول'
+        FROM subjects s CROSS JOIN classes c
+        WHERE c.order_number IN (5,6) AND s.code IN ('QURAN','ARAB','MATH','SCI','SST','ISLAMIC')
+        ON CONFLICT (subject_id, class_id, academic_year_id, semester) DO NOTHING;
 
-    INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
-    SELECT subject_id, class_id, teacher_id, academic_year_id, 'ثاني'
-    FROM courses
-    WHERE semester = 'أول';
+        INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
+        SELECT s.id, c.id,
+               CASE s.code
+                 WHEN 'ENGL' THEN 'T007'
+                 WHEN 'ISLAMIC' THEN 'T006'
+                 WHEN 'SST' THEN 'T005'
+                 ELSE CASE s.code
+                   WHEN 'QURAN' THEN 'T002'
+                   WHEN 'ARAB' THEN 'T001'
+                   WHEN 'MATH' THEN 'T003'
+                   WHEN 'SCI' THEN 'T004'
+                   ELSE NULL
+                 END
+               END,
+               current_year_id, 'أول'
+        FROM subjects s CROSS JOIN classes c
+        WHERE c.order_number IN (7,8,9) AND s.code IN ('QURAN','ARAB','MATH','SCI','SST','ISLAMIC','ENGL')
+        ON CONFLICT (subject_id, class_id, academic_year_id, semester) DO NOTHING;
+
+        INSERT INTO courses (subject_id, class_id, teacher_id, academic_year_id, semester)
+        SELECT subject_id, class_id, teacher_id, academic_year_id, 'ثاني'
+        FROM courses
+        WHERE semester = 'أول' AND academic_year_id = current_year_id
+        ON CONFLICT (subject_id, class_id, academic_year_id, semester) DO NOTHING;
+
+    END IF;
 END $$;
 
+-- عرض ملخص الطالب
 CREATE OR REPLACE VIEW student_summary AS
 SELECT
     s.id AS student_id,
-    s.first_name || ' ' || s.last_name AS full_name,
+    s.full_name,
     c.name AS class_name,
     sec.name AS section_name,
     COUNT(CASE WHEN a.status = 'حاضر' THEN 1 END) AS present_days,
@@ -469,8 +552,9 @@ JOIN classes c ON sec.class_id = c.id
 LEFT JOIN attendance a ON s.id = a.student_id AND a.date >= CURRENT_DATE - INTERVAL '30 days'
 LEFT JOIN fee_types f ON f.class_id = c.id
 LEFT JOIN payments p ON s.id = p.student_id
-GROUP BY s.id, s.first_name, s.last_name, c.name, sec.name;
+GROUP BY s.id, s.full_name, c.name, sec.name;
 
+-- دالة حساب نسبة الحضور
 CREATE OR REPLACE FUNCTION GetAttendanceRate(student_id VARCHAR(20), days INT) RETURNS DECIMAL(5,2) AS $$
 DECLARE
     total_days INT;
@@ -494,12 +578,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- دالة فحص الغياب
 CREATE OR REPLACE FUNCTION check_absence_limit_func() RETURNS TRIGGER AS $$
 DECLARE
     absences INT;
     max_absences INT;
 BEGIN
     SELECT setting_value::INT INTO max_absences FROM settings WHERE setting_key = 'max_absences';
+    IF max_absences IS NULL THEN max_absences := 12; END IF;
+
     SELECT COUNT(*) INTO absences FROM attendance
     WHERE student_id = NEW.student_id AND status = 'غائب' AND date >= NEW.date - INTERVAL '30 days';
 
@@ -513,16 +600,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- تشغيل الدالة عند تسجيل الحضور
+DROP TRIGGER IF EXISTS check_absence_limit ON attendance;
 CREATE TRIGGER check_absence_limit AFTER INSERT ON attendance FOR EACH ROW EXECUTE FUNCTION check_absence_limit_func();
 
-CREATE INDEX idx_students_class ON students(section_id);
-CREATE INDEX idx_students_academic_year ON students(academic_year_id);
-CREATE INDEX idx_students_status ON students(status);
-CREATE INDEX idx_attendance_student_date ON attendance(student_id, date);
-CREATE INDEX idx_attendance_date_status ON attendance(date, status);
-CREATE INDEX idx_payments_student ON payments(student_id);
-CREATE INDEX idx_payments_date ON payments(payment_date);
-CREATE INDEX idx_payments_fee_type ON payments(fee_type_id);
-CREATE INDEX idx_results_student ON academic_results(student_id);
-CREATE INDEX idx_results_course ON academic_results(course_id);
-CREATE INDEX idx_results_year_semester ON academic_results(academic_year_id, semester);
+-- مؤشرات للأداء
+CREATE INDEX IF NOT EXISTS idx_students_class ON students(section_id);
+CREATE INDEX IF NOT EXISTS idx_students_academic_year ON students(academic_year_id);
+CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date);
+CREATE INDEX IF NOT EXISTS idx_attendance_date_status ON attendance(date, status);
+CREATE INDEX IF NOT EXISTS idx_payments_student ON payments(student_id);
+CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_payments_fee_type ON payments(fee_type_id);
+CREATE INDEX IF NOT EXISTS idx_results_student ON academic_results(student_id);
+CREATE INDEX IF NOT EXISTS idx_results_course ON academic_results(course_id);
+CREATE INDEX IF NOT EXISTS idx_results_year_semester ON academic_results(academic_year_id, semester);
