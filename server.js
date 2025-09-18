@@ -593,6 +593,5 @@ process.on('unhandledRejection', (reason, promise) => {
 pro
 cess.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
-  // لا تتوقف — استمر في العمل
   process.exitCode = 1;
 });
