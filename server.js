@@ -290,16 +290,14 @@ app.post("/api/students", async (req, res) => {
       });
     }
 
-    const existingStudent = await executeQuery(
-      `SELECT id FROM students WHERE first_name = $1 AND last_name = $2 AND section_id = $3`,
-      [first_name, last_name, section_id]
-    );
-    if (existingStudent.length > 0) {
-      return res.status(400).json({
-        error: "الطالب موجود مسبقًا",
-        details: "يوجد طالب بنفس الاسم والشعبة",
-      });
-    }
+    // نتحقق من أن الاسم الكامل (الأول، الثاني، الثالث) ليس موجودًا بالفعل
+const existingStudent = await executeQuery(`
+  SELECT id FROM students 
+  WHERE first_name = $1 
+    AND middle_name = $2 
+    AND last_name = $3 
+    AND section_id = $4
+`, [first_name, middle_name, last_name, section_id]);
 
     const studentId = `STD${Date.now()}`;
     await executeQuery(
@@ -592,7 +590,8 @@ app.listen(PORT, "0.0.0.0", async () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
-process.on('uncaughtException', (err) => {
+pro
+cess.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
   // لا تتوقف — استمر في العمل
   process.exitCode = 1;
