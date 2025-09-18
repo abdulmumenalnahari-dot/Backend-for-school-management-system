@@ -590,8 +590,7 @@ app.listen(PORT, "0.0.0.0", async () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
-pro
-cess.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
   process.exitCode = 1;
 });
