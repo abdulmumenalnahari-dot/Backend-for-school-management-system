@@ -24,7 +24,7 @@ const initializeDatabaseSchema = async () => {
     `);
 
     if (!checkTable[0].exists) {
-      console.log('🔄 جاري إنشاء الجداول...');
+      console.log("🔄 جاري إنشاء الجداول...");
 
       // هنا نضع محتوى ملف db.sql كسلسلة نصية
       const schemaSQL = `
@@ -188,20 +188,20 @@ const initializeDatabaseSchema = async () => {
 
       // تقسيم التعليمات حسب الفاصلة المنقوطة
       const statements = schemaSQL
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
 
       for (const stmt of statements) {
-        await executeQuery(stmt + ';');
+        await executeQuery(stmt + ";");
       }
 
-      console.log('✅ تم إنشاء الجداول بنجاح');
+      console.log("✅ تم إنشاء الجداول بنجاح");
 
       // --- إدخال البيانات الأولية فقط إذا كانت الجداول فارغة ---
-      const studentCount = await executeQuery('SELECT COUNT(*) FROM students;');
+      const studentCount = await executeQuery("SELECT COUNT(*) FROM students;");
       if (parseInt(studentCount[0].count) === 0) {
-        console.log('🔄 جاري إدخال البيانات الأولية...');
+        console.log("🔄 جاري إدخال البيانات الأولية...");
 
         const seedSQL = `
           INSERT INTO classes (name, level, max_students) VALUES 
@@ -257,25 +257,25 @@ const initializeDatabaseSchema = async () => {
         `;
 
         const seedStatements = seedSQL
-          .split(';')
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
+          .split(";")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
 
         for (const stmt of seedStatements) {
           try {
-            await executeQuery(stmt + ';');
+            await executeQuery(stmt + ";");
           } catch (err) {
-            console.warn('تحذير في تنفيذ أمر إدخال البيانات:', err.message);
+            console.warn("تحذير في تنفيذ أمر إدخال البيانات:", err.message);
           }
         }
 
-        console.log('✅ تم إدخال البيانات الأولية');
+        console.log("✅ تم إدخال البيانات الأولية");
       }
     } else {
-      console.log('🟢 الجداول موجودة مسبقًا. لا حاجة لإعادة الإنشاء.');
+      console.log("🟢 الجداول موجودة مسبقًا. لا حاجة لإعادة الإنشاء.");
     }
   } catch (error) {
-    console.error('❌ خطأ في تهيئة هيكل قاعدة البيانات:', error.message);
+    console.error("❌ خطأ في تهيئة هيكل قاعدة البيانات:", error.message);
     throw error;
   }
 };
@@ -920,7 +920,8 @@ app.use((err, req, res, next) => {
 // 17. بدء السيرفر
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`);
-  await initializeDatabase(); // بدء اتصال قاعدة البيانات
+  await initializeDatabase(); // الاتصال بالـ Pool
+  await initializeDatabaseSchema(); // <-- الجديدة: إنشاء الجداول
 });
 
 // --- إدارة إعادة الاتصال التلقائي ---
