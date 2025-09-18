@@ -11,6 +11,275 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// --- دالة تهيئة هيكل قاعدة البيانات ---
+const initializeDatabaseSchema = async () => {
+  try {
+    // تحقق من وجود الجدول students
+    const checkTable = await executeQuery(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'students'
+      );
+    `);
+
+    if (!checkTable[0].exists) {
+      console.log('🔄 جاري إنشاء الجداول...');
+
+      // هنا نضع محتوى ملف db.sql كسلسلة نصية
+      const schemaSQL = `
+        CREATE TYPE school_level AS ENUM ('ابتدائي', 'متوسط');
+        CREATE TYPE gender_type AS ENUM ('ذكر', 'أنثى');
+        CREATE TYPE student_status AS ENUM ('نشط', 'منفصل', 'متخرج', 'منقول');
+        CREATE TYPE teacher_status AS ENUM ('نشط', 'موقف', 'مستقيل');
+        CREATE TYPE payment_method AS ENUM ('نقدًا', 'تحويل بنكي', 'بطاقة ائتمان', 'شيك');
+
+        CREATE TABLE IF NOT EXISTS classes (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(50) NOT NULL,
+          level school_level NOT NULL,
+          max_students INTEGER DEFAULT 30
+        );
+
+        CREATE TABLE IF NOT EXISTS sections (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(50) NOT NULL,
+          class_id INTEGER REFERENCES classes(id) ON DELETE CASCADE,
+          teacher_id VARCHAR(20),
+          capacity INTEGER DEFAULT 30,
+          UNIQUE(class_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS students (
+          id VARCHAR(20) PRIMARY KEY,
+          first_name TEXT NOT NULL,
+          middle_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          family_name TEXT NOT NULL,
+          gender gender_type NOT NULL,
+          birth_date DATE,
+          phone VARCHAR(15) NOT NULL,
+          email VARCHAR(100),
+          address TEXT,
+          enrollment_date DATE DEFAULT CURRENT_DATE,
+          status student_status DEFAULT 'نشط',
+          section_id INTEGER REFERENCES sections(id) ON DELETE SET NULL,
+          photo_url TEXT,
+          father_name TEXT,
+          mother_name TEXT,
+          emergency_contact TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS teachers (
+          id VARCHAR(20) PRIMARY KEY,
+          first_name TEXT NOT NULL,
+          last_name TEXT NOT NULL,
+          gender gender_type NOT NULL,
+          birth_date DATE,
+          phone VARCHAR(15) NOT NULL,
+          email VARCHAR(100),
+          hire_date DATE DEFAULT CURRENT_DATE,
+          specialization TEXT,
+          salary DECIMAL(10,2),
+          status teacher_status DEFAULT 'نشط',
+          photo_url TEXT,
+          address TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS academic_years (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(20) NOT NULL,
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          is_current BOOLEAN DEFAULT false,
+          UNIQUE(name)
+        );
+
+        CREATE TABLE IF NOT EXISTS fee_types (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          amount DECIMAL(10,2) NOT NULL,
+          due_date DATE,
+          is_mandatory BOOLEAN DEFAULT true,
+          description TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS payments (
+          id SERIAL PRIMARY KEY,
+          student_id VARCHAR(20) REFERENCES students(id) ON DELETE CASCADE,
+          fee_type_id INTEGER REFERENCES fee_types(id),
+          amount DECIMAL(10,2) NOT NULL,
+          payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          method payment_method NOT NULL,
+          receipt_number VARCHAR(50),
+          notes TEXT,
+          created_by VARCHAR(20)
+        );
+
+        CREATE TABLE IF NOT EXISTS attendance (
+          id SERIAL PRIMARY KEY,
+          student_id VARCHAR(20) REFERENCES students(id) ON DELETE CASCADE,
+          date DATE NOT NULL DEFAULT CURRENT_DATE,
+          status VARCHAR(10) NOT NULL CHECK (status IN ('حاضر', 'غائب', 'متأخر')),
+          time_in TIME,
+          time_out TIME,
+          notes TEXT,
+          UNIQUE(student_id, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS courses (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          class_level school_level NOT NULL,
+          teacher_id VARCHAR(20) REFERENCES teachers(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS academic_results (
+          id SERIAL PRIMARY KEY,
+          student_id VARCHAR(20) REFERENCES students(id) ON DELETE CASCADE,
+          course_id INTEGER REFERENCES courses(id),
+          academic_year_id INTEGER REFERENCES academic_years(id),
+          semester VARCHAR(10) NOT NULL CHECK (semester IN ('الأول', 'الثاني')),
+          marks_obtained DECIMAL(5,2),
+          total_marks DECIMAL(5,2) DEFAULT 100,
+          grade VARCHAR(5),
+          comments TEXT,
+          exam_date DATE,
+          UNIQUE(student_id, course_id, academic_year_id, semester)
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id VARCHAR(20) PRIMARY KEY,
+          username VARCHAR(50) UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'teacher', 'accountant', 'parent')),
+          full_name TEXT NOT NULL,
+          email VARCHAR(100),
+          phone VARCHAR(15),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_login TIMESTAMP,
+          is_active BOOLEAN DEFAULT true
+        );
+
+        CREATE TABLE IF NOT EXISTS user_student_relations (
+          user_id VARCHAR(20) REFERENCES users(id) ON DELETE CASCADE,
+          student_id VARCHAR(20) REFERENCES students(id) ON DELETE CASCADE,
+          relation_type VARCHAR(20) NOT NULL,
+          PRIMARY KEY (user_id, student_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS notes (
+          id SERIAL PRIMARY KEY,
+          student_id VARCHAR(20) REFERENCES students(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_by VARCHAR(20) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          category VARCHAR(20) DEFAULT 'عام'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_students_section ON students(section_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_student ON payments(student_id);
+        CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id, date);
+        CREATE INDEX IF NOT EXISTS idx_academic_results_student ON academic_results(student_id);
+        CREATE INDEX IF NOT EXISTS idx_payments_fee_type ON payments(fee_type_id);
+        CREATE INDEX IF NOT EXISTS idx_results_year_semester ON academic_results(academic_year_id, semester);
+      `;
+
+      // تقسيم التعليمات حسب الفاصلة المنقوطة
+      const statements = schemaSQL
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const stmt of statements) {
+        await executeQuery(stmt + ';');
+      }
+
+      console.log('✅ تم إنشاء الجداول بنجاح');
+
+      // --- إدخال البيانات الأولية فقط إذا كانت الجداول فارغة ---
+      const studentCount = await executeQuery('SELECT COUNT(*) FROM students;');
+      if (parseInt(studentCount[0].count) === 0) {
+        console.log('🔄 جاري إدخال البيانات الأولية...');
+
+        const seedSQL = `
+          INSERT INTO classes (name, level, max_students) VALUES 
+          ('الصف الأول الإبتدائي', 'ابتدائي', 30),
+          ('الصف الثاني الإبتدائي', 'ابتدائي', 30),
+          ('الصف الثالث الإبتدائي', 'ابتدائي', 30),
+          ('الصف الرابع الإبتدائي', 'ابتدائي', 30),
+          ('الصف الخامس الإبتدائي', 'ابتدائي', 30),
+          ('الصف السادس الإبتدائي', 'ابتدائي', 30),
+          ('الصف السابع', 'متوسط', 35),
+          ('الصف الثامن', 'متوسط', 35),
+          ('الصف التاسع', 'متوسط', 35);
+
+          INSERT INTO sections (name, class_id, capacity) VALUES
+          ('A', 1, 30), ('B', 1, 30),
+          ('A', 2, 30), ('B', 2, 30),
+          ('A', 3, 30), ('B', 3, 30),
+          ('A', 4, 30), ('B', 4, 30),
+          ('A', 5, 30), ('B', 5, 30),
+          ('A', 6, 30), ('B', 6, 30),
+          ('A', 7, 35), ('B', 7, 35),
+          ('A', 8, 35), ('B', 8, 35),
+          ('A', 9, 35), ('B', 9, 35);
+
+          INSERT INTO teachers (id, first_name, last_name, gender, birth_date, phone, email, hire_date, specialization, salary, status)
+          VALUES 
+          ('T001', 'أحمد', 'الفلاحي', 'ذكر', '1985-03-15', '770112233', 'ahmed@school.ye', '2015-08-01', 'اللغة العربية', 145000, 'نشط'),
+          ('T002', 'فاطمة', 'السقاف', 'أنثى', '1990-11-20', '770223344', 'fatima@school.ye', '2016-08-01', 'العلوم', 148000, 'نشط'),
+          ('T003', 'محمد', 'القرشي', 'ذكر', '1988-06-10', '770334455', 'mohammed@school.ye', '2018-08-01', 'الرياضيات', 150000, 'نشط'),
+          ('T004', 'آمنة', 'الحمادي', 'أنثى', '1992-02-28', '770445566', 'amna@school.ye', '2017-08-01', 'اللغة الإنجليزية', 142000, 'نشط'),
+          ('T005', 'سامي', 'الحميدي', 'ذكر', '1987-07-14', '770445566', 'sami@school.ye', 'بكالوريوس دراسات اجتماعية', 'الدراسات الاجتماعية', '2017-08-01', 138000, 'نشط'),
+          ('T006', 'إيمان', 'الشامي', 'أنثى', '1991-09-22', '770556677', 'iman@school.ye', 'ماجستير تربية إسلامية', 'التربية الإسلامية', '2020-08-01', 142000, 'نشط'),
+          ('T007', 'خالد', 'المرتضى', 'ذكر', '1989-12-30', '770667788', 'khaled@school.ye', 'دبلوم لغة إنجليزية', 'اللغة الإنجليزية', '2019-08-01', 137000, 'نشط');
+
+          DO $$DECLARE
+            current_year_id INT;
+          BEGIN
+            INSERT INTO academic_years (name, start_date, end_date, is_current)
+            VALUES ('2024-2025', '2024-09-01', '2025-06-30', true)
+            ON CONFLICT (name) DO NOTHING;
+
+            SELECT id INTO current_year_id FROM academic_years WHERE is_current = TRUE LIMIT 1;
+
+            IF current_year_id IS NOT NULL THEN
+              INSERT INTO fee_types (name, amount, due_date, is_mandatory, description)
+              VALUES 
+                ('الرسوم الدراسية', 500000, '2024-09-15', true, 'الرسوم الشهرية الأساسية'),
+                ('الأنشطة', 100000, '2024-09-10', true, 'رسوم الأنشطة المدرسية'),
+                ('الكتب', 75000, '2024-09-05', true, 'تكلفة الكتب والملازم'),
+                ('الحافلة', 200000, '2024-09-10', false, 'رسوم النقل بالحافلة');
+            END IF;
+          END$$;
+        `;
+
+        const seedStatements = seedSQL
+          .split(';')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+
+        for (const stmt of seedStatements) {
+          try {
+            await executeQuery(stmt + ';');
+          } catch (err) {
+            console.warn('تحذير في تنفيذ أمر إدخال البيانات:', err.message);
+          }
+        }
+
+        console.log('✅ تم إدخال البيانات الأولية');
+      }
+    } else {
+      console.log('🟢 الجداول موجودة مسبقًا. لا حاجة لإعادة الإنشاء.');
+    }
+  } catch (error) {
+    console.error('❌ خطأ في تهيئة هيكل قاعدة البيانات:', error.message);
+    throw error;
+  }
+};
+
 // Middleware: CORS - دعم الواجهة الأمامية
 app.use(
   cors({
